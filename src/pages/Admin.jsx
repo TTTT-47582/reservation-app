@@ -1,5 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { onAuthStateChanged, signOut } from 'firebase/auth'
+import { auth } from '../firebase'
 import { useApp, TIME_SLOTS } from '../context/AppContext'
 
 const STATUS_LABEL = { pending: '未確認', confirmed: '確定', cancelled: 'キャンセル' }
@@ -21,8 +23,22 @@ function formatDateFull(d) {
 export default function Admin() {
   const navigate = useNavigate()
   const { reservations, updateStatus, deleteReservation, shifts, addShiftSlot, removeShiftSlot, addShiftDate, getAvailableDates, visitCounts, coupons, markCouponUsed } = useApp()
+  const [user, setUser] = useState(null)
+  const [authLoading, setAuthLoading] = useState(true)
+
+  useEffect(() => {
+    return onAuthStateChanged(auth, (u) => {
+      setUser(u)
+      setAuthLoading(false)
+      if (!u) navigate('/login')
+    })
+  }, [navigate])
+
   const [tab, setTab] = useState('reservations')
   const [filter, setFilter] = useState('all')
+  if (authLoading) return <div style={{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', background:'var(--g900)', color:'var(--white)', fontSize:'1rem' }}>読み込み中…</div>
+  if (!user) return null
+
   const [newShiftDate, setNewShiftDate] = useState('')
   const [newSlot, setNewSlot] = useState({})
 
@@ -62,9 +78,11 @@ export default function Admin() {
             🌸 さくら保育園
             <span className="admin-logo-sub">管理者ダッシュボード</span>
           </div>
-          <button className="btn btn-sm btn-secondary" onClick={() => navigate('/')}>
-            サイトへ戻る
-          </button>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <span style={{ fontSize: '.8125rem', color: 'var(--g400)' }}>{user.email}</span>
+            <button className="btn btn-sm btn-secondary" onClick={() => navigate('/')}>サイトへ戻る</button>
+            <button className="btn btn-sm btn-secondary" onClick={() => signOut(auth).then(() => navigate('/login'))}>ログアウト</button>
+          </div>
         </div>
       </div>
 

@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { AppProvider } from './context/AppContext'
+import Login from './pages/Login'
 import Home from './pages/Home'
 import Terms from './pages/Terms'
 import ReservationForm from './pages/ReservationForm'
@@ -15,6 +16,7 @@ export default function App() {
           <Route path="/terms" element={<Terms />} />
           <Route path="/reservation" element={<ReservationForm />} />
           <Route path="/confirmation" element={<Confirmation />} />
+          <Route path="/login" element={<Login />} />
           <Route path="/admin" element={<Admin />} />
         </Routes>
       </BrowserRouter>

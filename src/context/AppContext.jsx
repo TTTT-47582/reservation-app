@@ -1,120 +1,135 @@
 import { createContext, useContext, useState, useEffect } from 'react'
+import {
+  collection, doc, addDoc, updateDoc, deleteDoc, setDoc, getDoc,
+  onSnapshot, serverTimestamp, query, orderBy,
+} from 'firebase/firestore'
+import { db } from '../firebase'
 
 const AppContext = createContext(null)
 
 export const TIME_SLOTS = [
-  '07:00〜09:00',
-  '09:00〜12:00',
-  '12:00〜15:00',
-  '15:00〜18:00',
-  '18:00〜19:00',
+  '07:00〜09:00', '09:00〜12:00', '12:00〜15:00', '15:00〜18:00', '18:00〜19:00',
 ]
 
 function generateCouponCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
-  const seg = () =>
-    Array.from({ length: 4 }, () => chars[Math.floor(Math.random() * chars.length)]).join('')
+  const seg = () => Array.from({ length: 4 }, () => chars[Math.floor(Math.random() * chars.length)]).join('')
   return `SAKURA-${seg()}-${seg()}`
-}
-
-function buildDefaultShifts() {
-  const shifts = {}
-  const today = new Date()
-  for (let i = 3; i <= 21; i++) {
-    const d = new Date(today)
-    d.setDate(d.getDate() + i)
-    const dow = d.getDay()
-    if (dow === 0) continue
-    const dateStr = d.toISOString().split('T')[0]
-    shifts[dateStr] = dow === 6
-      ? ['07:00〜09:00', '09:00〜12:00', '12:00〜15:00']
-      : [...TIME_SLOTS]
-  }
-  return shifts
-}
-
-function load(key, fallback) {
-  try { return JSON.parse(localStorage.getItem(key) ?? 'null') ?? fallback }
-  catch { return fallback }
 }
 
 export function AppProvider({ children }) {
   const [termsAgreed, setTermsAgreed] = useState(false)
-  const [reservations, setReservations] = useState(() => load('reservations', []))
-  const [shifts, setShifts] = useState(() => load('shifts', buildDefaultShifts()))
-  const [visitCounts, setVisitCounts] = useState(() => load('visitCounts', {}))
-  const [coupons, setCoupons] = useState(() => load('coupons', {}))
+  const [reservations, setReservations] = useState([])
+  const [shifts, setShifts] = useState({})
+  const [visitCounts, setVisitCounts] = useState({})
+  const [coupons, setCoupons] = useState({})
   const [lastReservation, setLastReservation] = useState(null)
+  const [loading, setLoading] = useState(true)
 
-  useEffect(() => { localStorage.setItem('reservations', JSON.stringify(reservations)) }, [reservations])
-  useEffect(() => { localStorage.setItem('shifts', JSON.stringify(shifts)) }, [shifts])
-  useEffect(() => { localStorage.setItem('visitCounts', JSON.stringify(visitCounts)) }, [visitCounts])
-  useEffect(() => { localStorage.setItem('coupons', JSON.stringify(coupons)) }, [coupons])
+  useEffect(() => {
+    const unsubs = [
+      onSnapshot(
+        query(collection(db, 'reservations'), orderBy('createdAt', 'desc')),
+        (snap) => setReservations(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+      ),
+      onSnapshot(collection(db, 'shifts'), (snap) => {
+        const data = {}
+        snap.docs.forEach(d => { data[d.id] = d.data().slots || [] })
+        setShifts(data)
+      }),
+      onSnapshot(collection(db, 'visitCounts'), (snap) => {
+        const data = {}
+        snap.docs.forEach(d => { data[d.id] = d.data().count })
+        setVisitCounts(data)
+      }),
+      onSnapshot(collection(db, 'coupons'), (snap) => {
+        const data = {}
+        snap.docs.forEach(d => { data[d.id] = d.data() })
+        setCoupons(data)
+        setLoading(false)
+      }),
+    ]
+    return () => unsubs.forEach(u => u())
+  }, [])
 
-  const addReservation = (formData) => {
+  const addReservation = async (formData) => {
     const phone = formData.phone
-    const newCount = (visitCounts[phone] || 0) + 1
+
+    const visitRef = doc(db, 'visitCounts', phone)
+    const visitSnap = await getDoc(visitRef)
+    const newCount = (visitSnap.exists() ? visitSnap.data().count : 0) + 1
+    await setDoc(visitRef, { count: newCount })
 
     let couponCode = null
-    const newCoupons = { ...coupons }
-    if (newCount === 5 && !coupons[phone]) {
+    let couponInfo = null
+    const couponRef = doc(db, 'coupons', phone)
+    const couponSnap = await getDoc(couponRef)
+    if (newCount === 5 && !couponSnap.exists()) {
       couponCode = generateCouponCode()
-      newCoupons[phone] = { code: couponCode, issuedAt: new Date().toISOString(), used: false }
-      setCoupons(newCoupons)
+      couponInfo = { code: couponCode, issuedAt: new Date().toISOString(), used: false }
+      await setDoc(couponRef, couponInfo)
+    } else if (couponSnap.exists()) {
+      couponInfo = couponSnap.data()
     }
-
-    setVisitCounts(prev => ({ ...prev, [phone]: newCount }))
 
     const reservation = {
       ...formData,
-      id: Date.now(),
-      createdAt: new Date().toISOString(),
+      createdAt: serverTimestamp(),
       status: 'pending',
       visitCount: newCount,
       couponCode,
-      couponInfo: newCoupons[phone] || coupons[phone] || null,
+      couponInfo,
     }
-    setReservations(prev => [reservation, ...prev])
-    setLastReservation(reservation)
-    return reservation
+
+    const ref = await addDoc(collection(db, 'reservations'), reservation)
+    const result = { ...reservation, id: ref.id, createdAt: new Date().toISOString() }
+    setLastReservation(result)
+    return result
   }
 
   const updateStatus = (id, status) =>
-    setReservations(prev => prev.map(r => r.id === id ? { ...r, status } : r))
+    updateDoc(doc(db, 'reservations', id), { status })
 
   const deleteReservation = (id) =>
-    setReservations(prev => prev.filter(r => r.id !== id))
+    deleteDoc(doc(db, 'reservations', id))
 
-  const addShiftSlot = (date, slot) =>
-    setShifts(prev => ({ ...prev, [date]: [...new Set([...(prev[date] || []), slot])].sort() }))
+  const addShiftDate = async (date) => {
+    const ref = doc(db, 'shifts', date)
+    const snap = await getDoc(ref)
+    if (!snap.exists()) await setDoc(ref, { slots: [], updatedAt: serverTimestamp() })
+  }
 
-  const removeShiftSlot = (date, slot) =>
-    setShifts(prev => {
-      const updated = (prev[date] || []).filter(s => s !== slot)
-      if (updated.length === 0) {
-        const { [date]: _, ...rest } = prev
-        return rest
-      }
-      return { ...prev, [date]: updated }
-    })
+  const addShiftSlot = async (date, slot) => {
+    const ref = doc(db, 'shifts', date)
+    const snap = await getDoc(ref)
+    const current = snap.exists() ? snap.data().slots || [] : []
+    const updated = [...new Set([...current, slot])].sort()
+    await setDoc(ref, { slots: updated, updatedAt: serverTimestamp() })
+  }
 
-  const addShiftDate = (date) =>
-    setShifts(prev => ({ ...prev, [date]: prev[date] || [] }))
+  const removeShiftSlot = async (date, slot) => {
+    const ref = doc(db, 'shifts', date)
+    const snap = await getDoc(ref)
+    if (!snap.exists()) return
+    const updated = snap.data().slots.filter(s => s !== slot)
+    if (updated.length === 0) await deleteDoc(ref)
+    else await updateDoc(ref, { slots: updated, updatedAt: serverTimestamp() })
+  }
+
+  const markCouponUsed = (phone) =>
+    updateDoc(doc(db, 'coupons', phone), { used: true, usedAt: serverTimestamp() })
 
   const getAvailableDates = () => Object.keys(shifts).sort()
   const getAvailableSlots = (date) => shifts[date] || []
-
-  const markCouponUsed = (phone) =>
-    setCoupons(prev => prev[phone] ? { ...prev, [phone]: { ...prev[phone], used: true } } : prev)
 
   return (
     <AppContext.Provider value={{
       termsAgreed, setTermsAgreed,
       reservations, addReservation, updateStatus, deleteReservation,
-      shifts, addShiftSlot, removeShiftSlot, addShiftDate,
+      shifts, addShiftDate, addShiftSlot, removeShiftSlot,
       getAvailableDates, getAvailableSlots,
       visitCounts, coupons, markCouponUsed,
-      lastReservation,
+      lastReservation, loading,
     }}>
       {children}
     </AppContext.Provider>
