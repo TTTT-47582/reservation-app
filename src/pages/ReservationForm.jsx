@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import Header from '../components/Header'
+import { sendConfirmationEmail } from '../lib/email'
 
 const PURPOSES = ['就労', '求職・就活', '通院・医療', '冠婚葬祭', 'リフレッシュ', '学校行事', 'その他']
 
@@ -60,12 +61,13 @@ export default function ReservationForm() {
     return e
   }
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
     const e2 = validate()
     if (Object.keys(e2).length > 0) { setErrors(e2); return }
     setSubmitting(true)
-    addReservation(form)
+    const result = await addReservation(form)
+    await sendConfirmationEmail(result).catch(() => {})
     navigate('/confirmation')
   }
 

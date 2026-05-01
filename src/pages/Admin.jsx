@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { onAuthStateChanged, signOut } from 'firebase/auth'
 import { auth } from '../firebase'
 import { useApp, TIME_SLOTS } from '../context/AppContext'
+import { sendConfirmedEmail, sendCouponEmail } from '../lib/email'
 
 const STATUS_LABEL = { pending: '未確認', confirmed: '確定', cancelled: 'キャンセル' }
 const STATUS_BADGE = { pending: 'badge-amber', confirmed: 'badge-green', cancelled: 'badge-gray' }
@@ -163,7 +164,11 @@ export default function Admin() {
                     </div>
                     <div className="res-actions">
                       {r.status === 'pending' && (
-                        <button className="btn btn-sm btn-success" onClick={() => updateStatus(r.id, 'confirmed')}>
+                        <button className="btn btn-sm btn-success" onClick={async () => {
+                          await updateStatus(r.id, 'confirmed')
+                          await sendConfirmedEmail(r).catch(() => {})
+                          if (r.couponCode) await sendCouponEmail(r, r.couponCode).catch(() => {})
+                        }}>
                           確定
                         </button>
                       )}

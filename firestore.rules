@@ -1,15 +1,14 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // 予約・シフトは誰でも読み書き可（認証はアプリ側で制御）
     match /reservations/{id} {
       allow read: if request.auth != null;
       allow create: if true;
       allow update, delete: if request.auth != null;
     }
+    // シフトはGASから直接書き込めるよう公開（練習用）
     match /shifts/{id} {
-      allow read: if true;
-      allow write: if request.auth != null;
+      allow read, write: if true;
     }
     match /visitCounts/{id} {
       allow read, write: if true;
