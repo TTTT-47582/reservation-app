@@ -320,7 +320,7 @@ img { max-width: 100%; }
 .empty-text { font-size: .9375rem; color: var(--g500); }
 
 /* Shift management */
-.shift-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+.shift-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
 .shift-card { background: var(--white); border-radius: var(--r-lg); border: 1px solid var(--g200); padding: 18px; }
 .shift-date { font-size: .9375rem; font-weight: 700; color: var(--g900); margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; }
 .shift-slots { display: flex; flex-direction: column; gap: 6px; }

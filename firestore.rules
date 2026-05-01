@@ -6,8 +6,10 @@ service cloud.firestore {
       allow create: if true;
       allow update, delete: if request.auth != null;
     }
-    // シフトはGASから直接書き込めるよう公開（練習用）
     match /shifts/{id} {
+      allow read, write: if true;
+    }
+    match /nurses/{id} {
       allow read, write: if true;
     }
     match /visitCounts/{id} {
