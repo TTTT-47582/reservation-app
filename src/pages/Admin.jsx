@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { onAuthStateChanged, signOut } from 'firebase/auth'
 import { auth } from '../firebase'
-import { useApp, TIME_SLOTS } from '../context/AppContext'
+import { useApp, TIME_SLOTS, NURSE_COLORS } from '../context/AppContext'
 import { sendConfirmedEmail, sendCouponEmail } from '../lib/email'
 
 const STATUS_LABEL = { pending: '未確認', confirmed: '確定', cancelled: 'キャンセル' }
@@ -23,7 +23,13 @@ function formatDateFull(d) {
 
 export default function Admin() {
   const navigate = useNavigate()
-  const { reservations, updateStatus, deleteReservation, shifts, addShiftSlot, removeShiftSlot, addShiftDate, getAvailableDates, visitCounts, coupons, markCouponUsed } = useApp()
+  const {
+    reservations, updateStatus, deleteReservation,
+    shifts, nurses, addNurse, deleteNurse,
+    addShiftDate, removeShiftDate, addNurseToSlot, removeNurseFromSlot,
+    getAvailableDates, getAvailableSlots, getSlotNurses,
+    visitCounts, coupons, markCouponUsed,
+  } = useApp()
   const [user, setUser] = useState(null)
   const [authLoading, setAuthLoading] = useState(true)
 
@@ -38,7 +44,7 @@ export default function Admin() {
   const [tab, setTab] = useState('reservations')
   const [filter, setFilter] = useState('all')
   const [newShiftDate, setNewShiftDate] = useState('')
-  const [newSlot, setNewSlot] = useState({})
+  const [newNurseName, setNewNurseName] = useState('')
 
   if (authLoading) return <div style={{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', background:'var(--g900)', color:'var(--white)', fontSize:'1rem' }}>読み込み中…</div>
   if (!user) return null
@@ -62,11 +68,10 @@ export default function Admin() {
     setNewShiftDate('')
   }
 
-  const handleAddSlot = (date) => {
-    const slot = newSlot[date]
-    if (!slot) return
-    addShiftSlot(date, slot)
-    setNewSlot(prev => ({ ...prev, [date]: '' }))
+  const handleAddNurse = async () => {
+    if (!newNurseName.trim()) return
+    await addNurse(newNurseName)
+    setNewNurseName('')
   }
 
   const availableDates = getAvailableDates()
@@ -195,78 +200,105 @@ export default function Admin() {
           {/* ===== シフト管理 ===== */}
           {tab === 'shifts' && (
             <>
-              <div style={{ background: 'var(--white)', borderRadius: 'var(--r-lg)', padding: '20px 24px', border: '1px solid var(--g200)', marginBottom: '24px' }}>
-                <div style={{ fontWeight: 700, color: 'var(--g700)', marginBottom: '12px', fontSize: '.9375rem' }}>
-                  📅 新しい日程を追加
+              {/* 保育士一覧 */}
+              <div className="nurse-mgmt-card">
+                <div className="nurse-mgmt-title">👩‍⚕️ 保育士一覧</div>
+                <div className="nurse-add-row">
+                  <input className="form-input" placeholder="保育士のお名前を入力"
+                    value={newNurseName} onChange={e => setNewNurseName(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleAddNurse()} />
+                  <button className="btn btn-primary" onClick={handleAddNurse}>追加</button>
                 </div>
+                {nurses.length === 0 ? (
+                  <p style={{ fontSize: '.875rem', color: 'var(--g400)', marginTop: '10px' }}>
+                    まず保育士を登録してください
+                  </p>
+                ) : (
+                  <div className="nurse-chip-list">
+                    {nurses.map((n, i) => (
+                      <span key={n.id} className="nurse-chip" style={{ background: NURSE_COLORS[i % NURSE_COLORS.length] }}>
+                        {n.name}
+                        <button className="nurse-chip-del" onClick={() => { if (confirm(`${n.name}を削除しますか？`)) deleteNurse(n.id) }}>×</button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* 日程追加 */}
+              <div className="nurse-mgmt-card">
+                <div className="nurse-mgmt-title">📅 シフト日程の追加</div>
                 <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
                   <div style={{ flex: 1, minWidth: '200px' }}>
-                    <label className="form-label">日付</label>
                     <input className="form-input" type="date" value={newShiftDate} onChange={e => setNewShiftDate(e.target.value)} />
                   </div>
-                  <button className="btn btn-primary" onClick={handleAddShiftDate}>
-                    追加
-                  </button>
+                  <button className="btn btn-primary" onClick={handleAddShiftDate}>日程を追加</button>
                   <button className="btn btn-outline" onClick={async () => {
-                    if (!confirm('今日から21日分のデフォルトシフト（平日全枠・土曜午前のみ）を一括生成しますか？')) return
+                    if (nurses.length === 0) { alert('先に保育士を登録してください'); return }
+                    if (!confirm('今日から21日分（平日・土曜）の日程を一括追加しますか？')) return
                     const today = new Date()
                     for (let i = 3; i <= 21; i++) {
                       const d = new Date(today)
                       d.setDate(d.getDate() + i)
-                      const dow = d.getDay()
-                      if (dow === 0) continue
-                      const dateStr = d.toISOString().split('T')[0]
-                      const slots = dow === 6
-                        ? ['07:00〜09:00', '09:00〜12:00', '12:00〜15:00']
-                        : [...TIME_SLOTS]
-                      await addShiftDate(dateStr)
-                      for (const slot of slots) await addShiftSlot(dateStr, slot)
+                      if (d.getDay() === 0) continue
+                      await addShiftDate(d.toISOString().split('T')[0])
                     }
-                  }}>
-                    デフォルトシフトを一括生成
-                  </button>
+                  }}>日程を一括追加（21日分）</button>
                 </div>
-                <p className="form-hint">日程を追加後、各日に時間帯を設定してください</p>
+                <p className="form-hint">日程を追加後、各日の時間帯に担当保育士を設定してください</p>
               </div>
 
-              {availableDates.length === 0 ? (
+              {/* シフト入力グリッド */}
+              {getAvailableDates().length === 0 ? (
                 <div className="empty-state">
                   <div className="empty-icon">📅</div>
                   <div className="empty-text">登録されているシフトはありません</div>
                 </div>
               ) : (
                 <div className="shift-grid">
-                  {availableDates.map(date => (
+                  {getAvailableDates().map(date => (
                     <div key={date} className="shift-card">
                       <div className="shift-date">
                         <span>{formatDateFull(date)}</span>
-                        <button className="btn btn-sm btn-danger" style={{ padding: '3px 10px', fontSize: '.75rem' }}
-                          onClick={() => { if (confirm(`${formatDateFull(date)}のシフトを全削除しますか？`)) { ;(shifts[date] || []).forEach(s => removeShiftSlot(date, s)) } }}>
+                        <button className="nurse-chip-del" style={{ fontSize: '.8rem', padding: '3px 8px', borderRadius: 'var(--r)', background: 'var(--red50)', color: 'var(--red500)' }}
+                          onClick={() => { if (confirm(`${formatDateFull(date)}のシフトを削除しますか？`)) removeShiftDate(date) }}>
                           削除
                         </button>
                       </div>
-                      <div className="shift-slots">
-                        {(shifts[date] || []).length === 0 && (
-                          <p style={{ fontSize: '.8125rem', color: 'var(--g400)' }}>時間帯が未設定です</p>
-                        )}
-                        {(shifts[date] || []).map(slot => (
-                          <div key={slot} className="shift-slot">
-                            <span>{slot}</span>
-                            <span className="shift-slot-remove" onClick={() => removeShiftSlot(date, slot)}>✕</span>
-                          </div>
-                        ))}
-                      </div>
-                      <div className="shift-add-row">
-                        <select className="form-select" style={{ fontSize: '.8125rem', padding: '6px 10px' }}
-                          value={newSlot[date] || ''}
-                          onChange={e => setNewSlot(prev => ({ ...prev, [date]: e.target.value }))}>
-                          <option value="">時間帯を選択</option>
-                          {TIME_SLOTS.filter(s => !(shifts[date] || []).includes(s)).map(s => (
-                            <option key={s}>{s}</option>
-                          ))}
-                        </select>
-                        <button className="btn btn-sm btn-outline" onClick={() => handleAddSlot(date)}>追加</button>
-                      </div>
+
+                      <table className="shift-nurse-table">
+                        <tbody>
+                          {TIME_SLOTS.map(slot => {
+                            const assigned = getSlotNurses(date, slot)
+                            const unassigned = nurses.filter(n => !assigned.find(a => a.id === n.id))
+                            return (
+                              <tr key={slot} className={assigned.length > 0 ? 'slot-active' : 'slot-empty'}>
+                                <td className="slot-time">{slot}</td>
+                                <td className="slot-nurses">
+                                  <div className="slot-nurse-row">
+                                    {assigned.map((n, i) => (
+                                      <span key={n.id} className="nurse-chip-sm"
+                                        style={{ background: NURSE_COLORS[nurses.findIndex(x => x.id === n.id) % NURSE_COLORS.length] }}>
+                                        {n.name}
+                                        <button className="nurse-chip-del" onClick={() => removeNurseFromSlot(date, slot, n.id)}>×</button>
+                                      </span>
+                                    ))}
+                                    {unassigned.length > 0 && (
+                                      <select className="slot-add-select"
+                                        value="" onChange={e => { if (e.target.value) addNurseToSlot(date, slot, e.target.value) }}>
+                                        <option value="">＋ 追加</option>
+                                        {unassigned.map(n => (
+                                          <option key={n.id} value={n.id}>{n.name}</option>
+                                        ))}
+                                      </select>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
                     </div>
                   ))}
                 </div>
