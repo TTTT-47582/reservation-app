@@ -37,11 +37,11 @@ export default function Admin() {
 
   const [tab, setTab] = useState('reservations')
   const [filter, setFilter] = useState('all')
-  if (authLoading) return <div style={{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', background:'var(--g900)', color:'var(--white)', fontSize:'1rem' }}>読み込み中…</div>
-  if (!user) return null
-
   const [newShiftDate, setNewShiftDate] = useState('')
   const [newSlot, setNewSlot] = useState({})
+
+  if (authLoading) return <div style={{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', background:'var(--g900)', color:'var(--white)', fontSize:'1rem' }}>読み込み中…</div>
+  if (!user) return null
 
   const filtered = reservations.filter(r =>
     filter === 'all' ? true :
