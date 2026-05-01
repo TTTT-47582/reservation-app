@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useApp } from '../context/AppContext'
+import { useApp, TIME_SLOTS } from '../context/AppContext'
 import Header from '../components/Header'
 import { sendConfirmationEmail } from '../lib/email'
 
@@ -36,12 +36,24 @@ export default function ReservationForm() {
   }, [termsAgreed, navigate])
 
   const availableDates = getAvailableDates()
+  const hasShifts = availableDates.length > 0
   const availableSlots = form.date ? getAvailableSlots(form.date) : []
 
+  // シフト未登録時のフォールバック：3日後以降を選択可能
+  const minDate = (() => {
+    const d = new Date()
+    d.setDate(d.getDate() + 3)
+    return d.toISOString().split('T')[0]
+  })()
+
   const set = (key) => (e) => {
-    setForm(prev => ({ ...prev, [key]: e.target.value }))
+    const val = e.target.value
     setErrors(prev => ({ ...prev, [key]: '' }))
-    if (key === 'date') setForm(prev => ({ ...prev, date: e.target.value, timeSlot: '' }))
+    if (key === 'date') {
+      setForm(prev => ({ ...prev, date: val, timeSlot: '' }))
+    } else {
+      setForm(prev => ({ ...prev, [key]: val }))
+    }
   }
 
   const validate = () => {
@@ -183,20 +195,26 @@ export default function ReservationForm() {
             <div className="form-section-body">
               <div className="form-grid-2">
                 <Field label="希望利用日" required error={errors.date}
-                  hint={availableDates.length === 0 ? '現在予約可能な日はありません' : undefined}>
-                  <select className={`form-select${errors.date ? ' err' : ''}`}
-                    value={form.date} onChange={set('date')}>
-                    <option value="">日付を選択</option>
-                    {availableDates.map(d => (
-                      <option key={d} value={d}>{formatDate(d)}</option>
-                    ))}
-                  </select>
+                  hint={!hasShifts ? '※管理者がシフトを設定すると選択可能日が絞り込まれます' : undefined}>
+                  {hasShifts ? (
+                    <select className={`form-select${errors.date ? ' err' : ''}`}
+                      value={form.date} onChange={set('date')}>
+                      <option value="">日付を選択</option>
+                      {availableDates.map(d => (
+                        <option key={d} value={d}>{formatDate(d)}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input className={`form-input${errors.date ? ' err' : ''}`}
+                      type="date" value={form.date} min={minDate}
+                      onChange={set('date')} />
+                  )}
                 </Field>
                 <Field label="希望時間帯" required error={errors.timeSlot}>
                   <select className={`form-select${errors.timeSlot ? ' err' : ''}`}
                     value={form.timeSlot} onChange={set('timeSlot')} disabled={!form.date}>
                     <option value="">時間帯を選択</option>
-                    {availableSlots.map(s => (
+                    {(hasShifts ? availableSlots : TIME_SLOTS).map(s => (
                       <option key={s} value={s}>{s}</option>
                     ))}
                   </select>

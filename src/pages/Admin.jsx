@@ -199,13 +199,31 @@ export default function Admin() {
                 <div style={{ fontWeight: 700, color: 'var(--g700)', marginBottom: '12px', fontSize: '.9375rem' }}>
                   📅 新しい日程を追加
                 </div>
-                <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-end' }}>
-                  <div style={{ flex: 1 }}>
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                  <div style={{ flex: 1, minWidth: '200px' }}>
                     <label className="form-label">日付</label>
                     <input className="form-input" type="date" value={newShiftDate} onChange={e => setNewShiftDate(e.target.value)} />
                   </div>
                   <button className="btn btn-primary" onClick={handleAddShiftDate}>
                     追加
+                  </button>
+                  <button className="btn btn-outline" onClick={async () => {
+                    if (!confirm('今日から21日分のデフォルトシフト（平日全枠・土曜午前のみ）を一括生成しますか？')) return
+                    const today = new Date()
+                    for (let i = 3; i <= 21; i++) {
+                      const d = new Date(today)
+                      d.setDate(d.getDate() + i)
+                      const dow = d.getDay()
+                      if (dow === 0) continue
+                      const dateStr = d.toISOString().split('T')[0]
+                      const slots = dow === 6
+                        ? ['07:00〜09:00', '09:00〜12:00', '12:00〜15:00']
+                        : [...TIME_SLOTS]
+                      await addShiftDate(dateStr)
+                      for (const slot of slots) await addShiftSlot(dateStr, slot)
+                    }
+                  }}>
+                    デフォルトシフトを一括生成
                   </button>
                 </div>
                 <p className="form-hint">日程を追加後、各日に時間帯を設定してください</p>
