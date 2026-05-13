@@ -23,10 +23,21 @@ export default function ReservationForm() {
   const navigate = useNavigate()
   const { termsAgreed, addReservation, getAvailableDates, getAvailableSlots, visitCounts, coupons } = useApp()
 
-  const [form, setForm] = useState({
-    parentName: '', parentKana: '', lineName: '', phone: '', email: '',
-    childName: '', childKana: '', childBirthdate: '', relationship: '',
-    date: '', timeSlot: '', purpose: '', notes: '',
+  const [form, setForm] = useState(() => {
+    try {
+      const saved = sessionStorage.getItem('reservationForm')
+      return saved ? JSON.parse(saved) : {
+        parentName: '', parentKana: '', lineName: '', phone: '', email: '',
+        childName: '', childKana: '', childBirthdate: '', relationship: '',
+        date: '', timeSlot: '', purpose: '', notes: '',
+      }
+    } catch {
+      return {
+        parentName: '', parentKana: '', lineName: '', phone: '', email: '',
+        childName: '', childKana: '', childBirthdate: '', relationship: '',
+        date: '', timeSlot: '', purpose: '', notes: '',
+      }
+    }
   })
   const [errors, setErrors] = useState({})
   const [submitting, setSubmitting] = useState(false)
@@ -49,11 +60,13 @@ export default function ReservationForm() {
   const set = (key) => (e) => {
     const val = e.target.value
     setErrors(prev => ({ ...prev, [key]: '' }))
-    if (key === 'date') {
-      setForm(prev => ({ ...prev, date: val, timeSlot: '' }))
-    } else {
-      setForm(prev => ({ ...prev, [key]: val }))
-    }
+    setForm(prev => {
+      const next = key === 'date'
+        ? { ...prev, date: val, timeSlot: '' }
+        : { ...prev, [key]: val }
+      sessionStorage.setItem('reservationForm', JSON.stringify(next))
+      return next
+    })
   }
 
   const validate = () => {
@@ -80,6 +93,7 @@ export default function ReservationForm() {
     setSubmitting(true)
     const result = await addReservation(form)
     await sendConfirmationEmail(result).catch(() => {})
+    sessionStorage.removeItem('reservationForm')
     navigate('/confirmation')
   }
 
@@ -137,7 +151,7 @@ export default function ReservationForm() {
               <Field label="LINEのお名前" required error={errors.lineName}
                 hint="予約者の特定に使用します。LINE表示名をそのまま入力してください">
                 <input className={`form-input${errors.lineName ? ' err' : ''}`}
-                  placeholder="はなこ🌸" value={form.lineName} onChange={set('lineName')} />
+                  placeholder="はなこ" value={form.lineName} onChange={set('lineName')} />
               </Field>
               <div className="form-grid-2">
                 <Field label="電話番号" required error={errors.phone} hint="ハイフンあり・なし両方可">

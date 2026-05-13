@@ -43,8 +43,8 @@ export default function Admin() {
 
   const [tab, setTab] = useState('reservations')
   const [filter, setFilter] = useState('all')
-  const [newShiftDate, setNewShiftDate] = useState('')
   const [newNurseName, setNewNurseName] = useState('')
+  const [selectedMonth, setSelectedMonth] = useState(() => new Date().toISOString().slice(0, 7))
 
   if (authLoading) return <div style={{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', background:'var(--g900)', color:'var(--white)', fontSize:'1rem' }}>読み込み中…</div>
   if (!user) return null
@@ -62,12 +62,6 @@ export default function Admin() {
     coupon: Object.keys(coupons).length,
   }
 
-  const handleAddShiftDate = () => {
-    if (!newShiftDate) return
-    addShiftDate(newShiftDate)
-    setNewShiftDate('')
-  }
-
   const handleAddNurse = async () => {
     if (!newNurseName.trim()) return
     await addNurse(newNurseName)
@@ -75,13 +69,21 @@ export default function Admin() {
   }
 
   const availableDates = getAvailableDates()
+  const today = new Date().toISOString().split('T')[0]
+  const allShiftDates = Object.keys(shifts)
+    .filter(date => date >= today && date.startsWith(selectedMonth))
+    .sort()
+
+  const shiftMonths = [...new Set(
+    Object.keys(shifts).filter(date => date >= today).map(date => date.slice(0, 7))
+  )].sort()
 
   return (
     <div className="admin-page">
       <div className="admin-topbar">
         <div className="admin-topbar-inner">
           <div className="admin-logo">
-            🌸 さくら保育園
+            🌳 けやき保育園
             <span className="admin-logo-sub">管理者ダッシュボード</span>
           </div>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -225,38 +227,29 @@ export default function Admin() {
                 )}
               </div>
 
-              {/* 日程追加 */}
+              {/* 月選択 */}
               <div className="nurse-mgmt-card">
-                <div className="nurse-mgmt-title">📅 シフト日程の追加</div>
-                <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
-                  <div style={{ flex: 1, minWidth: '200px' }}>
-                    <input className="form-input" type="date" value={newShiftDate} onChange={e => setNewShiftDate(e.target.value)} />
-                  </div>
-                  <button className="btn btn-primary" onClick={handleAddShiftDate}>日程を追加</button>
-                  <button className="btn btn-outline" onClick={async () => {
-                    if (nurses.length === 0) { alert('先に保育士を登録してください'); return }
-                    if (!confirm('今日から21日分（平日・土曜）の日程を一括追加しますか？')) return
-                    const today = new Date()
-                    for (let i = 3; i <= 21; i++) {
-                      const d = new Date(today)
-                      d.setDate(d.getDate() + i)
-                      if (d.getDay() === 0) continue
-                      await addShiftDate(d.toISOString().split('T')[0])
-                    }
-                  }}>日程を一括追加（21日分）</button>
+                <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <span style={{ fontWeight: 700, color: 'var(--g700)' }}>📅 表示月</span>
+                  <select className="form-select" style={{ width: 'auto' }}
+                    value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)}>
+                    {shiftMonths.map(m => {
+                      const [y, mo] = m.split('-')
+                      return <option key={m} value={m}>{y}年{parseInt(mo)}月</option>
+                    })}
+                  </select>
                 </div>
-                <p className="form-hint">日程を追加後、各日の時間帯に担当保育士を設定してください</p>
               </div>
 
               {/* シフト入力グリッド */}
-              {getAvailableDates().length === 0 ? (
+              {allShiftDates.length === 0 ? (
                 <div className="empty-state">
                   <div className="empty-icon">📅</div>
                   <div className="empty-text">登録されているシフトはありません</div>
                 </div>
               ) : (
                 <div className="shift-grid">
-                  {getAvailableDates().map(date => (
+                  {allShiftDates.map(date => (
                     <div key={date} className="shift-card">
                       <div className="shift-date">
                         <span>{formatDateFull(date)}</span>

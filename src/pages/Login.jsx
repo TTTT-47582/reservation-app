@@ -34,11 +34,11 @@ export default function Login() {
         width: '100%', maxWidth: '400px', boxShadow: 'var(--sh-lg)'
       }}>
         <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-          <div style={{ fontSize: '2.5rem', marginBottom: '8px' }}>🌸</div>
+          <div style={{ fontSize: '2.5rem', marginBottom: '8px' }}>🌳</div>
           <h1 style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--g900)', marginBottom: '4px' }}>
             管理者ログイン
           </h1>
-          <p style={{ fontSize: '.875rem', color: 'var(--g500)' }}>さくら保育園 管理システム</p>
+          <p style={{ fontSize: '.875rem', color: 'var(--g500)' }}>けやき保育園 管理システム</p>
         </div>
 
         <form onSubmit={handleLogin}>

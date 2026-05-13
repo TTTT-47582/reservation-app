@@ -17,6 +17,7 @@ function formatDate(d) {
 }
 
 function baseParams(r) {
+  const cancelUrl = `${window.location.origin}/cancel?id=${r.id}`
   return {
     to_email:     r.email,
     to_name:      r.parentName,
@@ -25,6 +26,7 @@ function baseParams(r) {
     time_slot:    r.timeSlot,
     purpose:      r.purpose,
     reservation_no: `#${String(r.id).slice(-6)}`,
+    cancel_url:   cancelUrl,
   }
 }
 

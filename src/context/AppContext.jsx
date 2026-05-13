@@ -77,7 +77,11 @@ export function AppProvider({ children }) {
   const addShiftDate = async (date) => {
     const ref = doc(db, 'shifts', date)
     const snap = await getDoc(ref)
-    if (!snap.exists()) await setDoc(ref, { assignments: {}, updatedAt: serverTimestamp() })
+    if (!snap.exists()) {
+      await setDoc(ref, { assignments: {}, source: 'app', updatedAt: serverTimestamp() })
+    } else {
+      await updateDoc(ref, { source: 'app', updatedAt: serverTimestamp() })
+    }
   }
 
   const addNurseToSlot = async (date, slot, nurseId) => {
@@ -105,7 +109,13 @@ export function AppProvider({ children }) {
     await deleteDoc(doc(db, 'shifts', date))
   }
 
-  const getAvailableDates = () => Object.keys(shifts).sort()
+  const getAvailableDates = () =>
+    Object.keys(shifts)
+      .filter(date => {
+        const assignments = shifts[date]?.assignments || {}
+        return Object.values(assignments).some(ids => Array.isArray(ids) && ids.length > 0)
+      })
+      .sort()
 
   const getAvailableSlots = (date) => {
     const assignments = shifts[date]?.assignments || {}

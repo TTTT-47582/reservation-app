@@ -1,8 +1,11 @@
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Header from '../components/Header'
+import CalendarModal from '../components/CalendarModal'
 
 export default function Home() {
   const navigate = useNavigate()
+  const [showCalendar, setShowCalendar] = useState(false)
   return (
     <div className="page">
       <Header />
@@ -12,16 +15,23 @@ export default function Home() {
           <div className="hero-inner">
             <div>
               <div className="hero-badge">一時保育オンライン予約</div>
-              <h1 className="hero-title">さくら保育園へようこそ</h1>
+              <h1 className="hero-title">けやき保育園へようこそ</h1>
               <p className="hero-subtitle">
                 お仕事・通院・リフレッシュなど、さまざまなシーンで<br />
                 一時保育をご利用いただけます。<br />
                 スマートフォン・PCから24時間受付中です。
               </p>
-              <button className="btn btn-lg" onClick={() => navigate('/terms')}
-                style={{ background: 'var(--white)', color: 'var(--p600)', fontWeight: 700 }}>
-                予約をはじめる →
-              </button>
+              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                <button className="btn btn-lg" onClick={() => navigate('/terms')}
+                  style={{ background: 'var(--white)', color: 'var(--p600)', fontWeight: 700 }}>
+                  予約をはじめる →
+                </button>
+                <button className="btn btn-lg" onClick={() => setShowCalendar(true)}
+                  style={{ background: 'rgba(255,255,255,0.15)', color: 'var(--white)', fontWeight: 700, border: '2px solid rgba(255,255,255,0.6)' }}>
+                  📅 予約可能日を確認
+                </button>
+              </div>
+              {showCalendar && <CalendarModal onClose={() => setShowCalendar(false)} />}
             </div>
             <div>
               <div className="hero-card">
@@ -86,6 +96,24 @@ export default function Home() {
           </div>
         </section>
 
+        {/* Cancel */}
+        <section style={{ background: 'var(--white)', padding: '40px 20px', borderTop: '1px solid var(--g200)' }}>
+          <div style={{ maxWidth: '700px', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: '1.0625rem', color: 'var(--g800)', marginBottom: '6px' }}>
+                🗓️ 予約のキャンセルはこちら
+              </div>
+              <div style={{ fontSize: '.875rem', color: 'var(--g500)' }}>
+                電話番号で予約を検索してキャンセルできます。前日まで無料です。
+              </div>
+            </div>
+            <button className="btn btn-secondary" onClick={() => navigate('/cancel')}
+              style={{ whiteSpace: 'nowrap', fontWeight: 700 }}>
+              キャンセルページへ →
+            </button>
+          </div>
+        </section>
+
         {/* Notice */}
         <section className="notice-section">
           <div className="notice-inner">
@@ -102,7 +130,8 @@ export default function Home() {
       </main>
 
       <footer className="home-footer">
-        © 2024 さくら保育園 &nbsp;|&nbsp;
+        © 2024 けやき保育園 &nbsp;|&nbsp;
+        <a href="/cancel">予約のキャンセル</a> &nbsp;|&nbsp;
         <a href="/admin">管理者ページ</a>
       </footer>
     </div>

@@ -6,8 +6,8 @@ export default function Header() {
     <header className="header">
       <div className="header-inner">
         <div className="header-logo" onClick={() => navigate('/')} style={{ cursor: 'pointer' }}>
-          <span className="header-logo-icon">🌸</span>
-          さくら保育園
+          <span className="header-logo-icon">🌳</span>
+          けやき保育園
         </div>
         <nav className="header-nav">
           <a href="/">トップ</a>
