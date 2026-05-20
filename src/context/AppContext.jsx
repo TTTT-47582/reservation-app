@@ -109,13 +109,16 @@ export function AppProvider({ children }) {
     await deleteDoc(doc(db, 'shifts', date))
   }
 
-  const getAvailableDates = () =>
-    Object.keys(shifts)
+  const getAvailableDates = () => {
+    const today = new Date().toISOString().split('T')[0]
+    return Object.keys(shifts)
       .filter(date => {
+        if (date < today) return false
         const assignments = shifts[date]?.assignments || {}
         return Object.values(assignments).some(ids => Array.isArray(ids) && ids.length > 0)
       })
       .sort()
+  }
 
   const getAvailableSlots = (date) => {
     const assignments = shifts[date]?.assignments || {}
@@ -131,6 +134,20 @@ export function AppProvider({ children }) {
   // ===== 予約 =====
   const addReservation = async (formData) => {
     const phone = formData.phone
+
+    // 同一電話番号の有効予約が3件以上なら拒否
+    const active = reservations.filter(r => r.phone === phone && r.status !== 'cancelled')
+    if (active.length >= 3) return { error: 'max_reservations' }
+
+    // 同一電話番号・同一日付・同一時間帯の重複を拒否
+    const duplicate = reservations.some(r =>
+      r.phone === phone &&
+      r.date === formData.date &&
+      r.timeSlot === formData.timeSlot &&
+      r.status !== 'cancelled'
+    )
+    if (duplicate) return { error: 'duplicate' }
+
     const visitRef = doc(db, 'visitCounts', phone)
     const visitSnap = await getDoc(visitRef)
     const newCount = (visitSnap.exists() ? visitSnap.data().count : 0) + 1

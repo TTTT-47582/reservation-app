@@ -91,10 +91,25 @@ export default function ReservationForm() {
     const e2 = validate()
     if (Object.keys(e2).length > 0) { setErrors(e2); return }
     setSubmitting(true)
-    const result = await addReservation(form)
-    await sendConfirmationEmail(result).catch(() => {})
-    sessionStorage.removeItem('reservationForm')
-    navigate('/confirmation')
+    try {
+      const result = await addReservation(form)
+      if (result?.error === 'max_reservations') {
+        setErrors({ submit: '同じ電話番号で予約できるのは3件までです。キャンセル後に再予約してください。' })
+        setSubmitting(false)
+        return
+      }
+      if (result?.error === 'duplicate') {
+        setErrors({ submit: '同じ日時・時間帯の予約が既にあります。別の日時をお選びください。' })
+        setSubmitting(false)
+        return
+      }
+      await sendConfirmationEmail(result).catch(() => {})
+      sessionStorage.removeItem('reservationForm')
+      navigate('/confirmation')
+    } catch {
+      setErrors({ submit: '予約の送信に失敗しました。もう一度お試しください。' })
+      setSubmitting(false)
+    }
   }
 
   const phone = form.phone
@@ -249,6 +264,11 @@ export default function ReservationForm() {
             </div>
           </div>
 
+          {errors.submit && (
+            <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '8px', padding: '12px 16px', marginBottom: '12px', color: '#DC2626', fontSize: '.9rem' }}>
+              {errors.submit}
+            </div>
+          )}
           <div className="form-actions">
             <button type="button" className="btn btn-secondary" onClick={() => navigate('/')}>
               キャンセル
