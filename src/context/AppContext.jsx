@@ -182,6 +182,24 @@ export function AppProvider({ children }) {
   const updateStatus = (id, status) =>
     updateDoc(doc(db, 'reservations', id), { status })
 
+  const changeReservation = async (id, updatedData) => {
+    const phone = updatedData.phone
+    const duplicate = reservations.some(r =>
+      r.id !== id &&
+      r.phone === phone &&
+      r.date === updatedData.date &&
+      r.timeSlot === updatedData.timeSlot &&
+      r.status !== 'cancelled'
+    )
+    if (duplicate) return { error: 'duplicate' }
+    await updateDoc(doc(db, 'reservations', id), {
+      date: updatedData.date,
+      timeSlot: updatedData.timeSlot,
+      updatedAt: serverTimestamp(),
+    })
+    return { success: true }
+  }
+
   const deleteReservation = (id) =>
     deleteDoc(doc(db, 'reservations', id))
 
@@ -191,7 +209,7 @@ export function AppProvider({ children }) {
   return (
     <AppContext.Provider value={{
       termsAgreed, setTermsAgreed,
-      reservations, addReservation, updateStatus, deleteReservation,
+      reservations, addReservation, updateStatus, changeReservation, deleteReservation,
       shifts, nurses, addNurse, deleteNurse,
       addShiftDate, removeShiftDate,
       addNurseToSlot, removeNurseFromSlot,

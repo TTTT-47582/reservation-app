@@ -101,15 +101,15 @@ export default function Home() {
           <div style={{ maxWidth: '700px', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
             <div>
               <div style={{ fontWeight: 700, fontSize: '1.0625rem', color: 'var(--g800)', marginBottom: '6px' }}>
-                🗓️ 予約のキャンセルはこちら
+                🗓️ 予約のキャンセル・変更はこちら
               </div>
               <div style={{ fontSize: '.875rem', color: 'var(--g500)' }}>
-                電話番号で予約を検索してキャンセルできます。前日まで無料です。
+                電話番号で予約を検索してキャンセル・変更できます。前日まで無料です。
               </div>
             </div>
             <button className="btn btn-secondary" onClick={() => navigate('/cancel')}
               style={{ whiteSpace: 'nowrap', fontWeight: 700 }}>
-              キャンセルページへ →
+              キャンセル・変更ページへ →
             </button>
           </div>
         </section>
