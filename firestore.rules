@@ -20,14 +20,15 @@ service cloud.firestore {
       allow write: if request.auth != null;
     }
 
-    // 来園回数・クーポン：予約作成時に更新が必要なため作成・更新は許可、読み取り・削除は管理者のみ
+    // 来園回数：予約作成・更新は誰でも可、読み取りも可（カウント確認に必要）、削除は管理者のみ
     match /visitCounts/{id} {
-      allow create, update: if true;
-      allow read, delete: if request.auth != null;
+      allow read, create, update: if true;
+      allow delete: if request.auth != null;
     }
+    // クーポン：読み取り・作成・更新は誰でも可（フォームでの検証に必要）、削除は管理者のみ
     match /coupons/{id} {
-      allow create, update: if true;
-      allow read, delete: if request.auth != null;
+      allow read, create, update: if true;
+      allow delete: if request.auth != null;
     }
 
     // 休園日：読み取りは誰でも可（予約フォーム表示に必要）、書き込みは管理者のみ

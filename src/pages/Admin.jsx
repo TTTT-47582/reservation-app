@@ -28,7 +28,7 @@ export default function Admin() {
     shifts, nurses, addNurse, deleteNurse,
     addShiftDate, removeShiftDate, addNurseToSlot, removeNurseFromSlot,
     getAvailableDates, getAvailableSlots, getSlotNurses,
-    visitCounts, coupons, markCouponUsed,
+    visitCounts, coupons, markCouponUsed, reissueCoupon,
     closedDates, addClosedDate, removeClosedDate,
   } = useApp()
   const [user, setUser] = useState(null)
@@ -158,7 +158,8 @@ export default function Admin() {
                         {r.parentName}
                         <span className={`badge ${STATUS_BADGE[r.status]}`}>{STATUS_LABEL[r.status]}</span>
                         {r.couponCode && <span className="badge badge-yellow">🎟️ クーポン付与済</span>}
-                        {r.couponInfo && !r.couponCode && <span className="badge badge-yellow">🎟️ クーポン所持</span>}
+                        {r.couponApplied && <span className="badge badge-green">🎟️ クーポン使用</span>}
+                        {r.couponInfo && !r.couponCode && !r.couponApplied && <span className="badge badge-yellow">🎟️ クーポン所持</span>}
                         {r.visitCount >= 5 && <span className="badge badge-blue">👑 {r.visitCount}回目</span>}
                       </div>
                       <div className="res-meta">
@@ -180,6 +181,7 @@ export default function Admin() {
                           await updateStatus(r.id, 'confirmed')
                           await sendConfirmedEmail(r).catch(() => {})
                           if (r.couponCode) await sendCouponEmail(r, r.couponCode).catch(() => {})
+                          if (r.couponApplied) await markCouponUsed(r.phone)
                         }}>
                           確定
                         </button>
@@ -396,12 +398,19 @@ export default function Admin() {
                           ? <span className="badge badge-gray">使用済み</span>
                           : <span className="badge badge-green">未使用</span>}
                       </div>
-                      <div style={{ minWidth: '80px' }}>
+                      <div style={{ minWidth: '130px', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                         {!info.used && (
                           <button className="btn btn-sm btn-secondary" onClick={() => markCouponUsed(phone)}>
                             使用済みに
                           </button>
                         )}
+                        <button className="btn btn-sm btn-secondary" onClick={async () => {
+                          if (confirm(`${phone} のクーポンを再発行しますか？\n現在のコードは無効になります。`)) {
+                            await reissueCoupon(phone)
+                          }
+                        }}>
+                          再発行
+                        </button>
                       </div>
                     </div>
                   ))}

@@ -179,6 +179,16 @@ export function AppProvider({ children }) {
       couponInfo = couponSnap.data()
     }
 
+    // 入力されたクーポンコードを検証し、即座に使用済みにする
+    let couponApplied = false
+    if (formData.couponCode && couponSnap.exists()) {
+      const c = couponSnap.data()
+      if (c.code === formData.couponCode && !c.used) {
+        couponApplied = true
+        await updateDoc(couponRef, { used: true, usedAt: serverTimestamp() })
+      }
+    }
+
     const reservation = {
       ...formData,
       createdAt: serverTimestamp(),
@@ -186,6 +196,7 @@ export function AppProvider({ children }) {
       visitCount: newCount,
       couponCode,
       couponInfo,
+      couponApplied,
     }
     const ref = await addDoc(collection(db, 'reservations'), reservation)
     const result = { ...reservation, id: ref.id, createdAt: new Date().toISOString() }
@@ -220,6 +231,16 @@ export function AppProvider({ children }) {
   const markCouponUsed = (phone) =>
     updateDoc(doc(db, 'coupons', phone), { used: true, usedAt: serverTimestamp() })
 
+  const reissueCoupon = async (phone) => {
+    const code = generateCouponCode()
+    await setDoc(doc(db, 'coupons', phone), {
+      code,
+      issuedAt: new Date().toISOString(),
+      used: false,
+      reissuedAt: serverTimestamp(),
+    })
+  }
+
   return (
     <AppContext.Provider value={{
       termsAgreed, setTermsAgreed,
@@ -228,7 +249,7 @@ export function AppProvider({ children }) {
       addShiftDate, removeShiftDate,
       addNurseToSlot, removeNurseFromSlot,
       getAvailableDates, getAvailableSlots, getSlotNurses,
-      visitCounts, coupons, markCouponUsed,
+      visitCounts, coupons, markCouponUsed, reissueCoupon,
       closedDates, addClosedDate, removeClosedDate,
       lastReservation, loading,
     }}>

@@ -117,6 +117,11 @@ export default function ReservationForm() {
   const hasCoupon = !!coupons[phone]
   const willGetCoupon = currentVisits + 1 === 5 && !hasCoupon
 
+  const couponData = coupons[phone]
+  const hasUnusedCoupon = couponData && !couponData.used
+  const couponValid = hasUnusedCoupon && form.couponCode === couponData.code
+  const couponInvalid = !!form.couponCode && !couponValid
+
   const formatDate = (d) => {
     if (!d) return ''
     const dt = new Date(d)
@@ -214,6 +219,39 @@ export default function ReservationForm() {
               </div>
             </div>
           </div>
+
+          {/* クーポン */}
+          {phone.length >= 10 && (
+            <div className="form-section">
+              <div className="form-section-hd">
+                <span className="form-section-icon">🎟️</span>
+                <span className="form-section-title">割引クーポン</span>
+              </div>
+              <div className="form-section-body">
+                {hasUnusedCoupon ? (
+                  <Field label="クーポンコード" error={couponInvalid ? 'クーポンコードが正しくありません' : ''} hint="お持ちのクーポンコードを入力してください">
+                    <input
+                      className={`form-input${couponInvalid ? ' err' : ''}`}
+                      placeholder="SAKURA-XXXX-XXXX"
+                      value={form.couponCode || ''}
+                      onChange={set('couponCode')}
+                    />
+                    {couponValid && (
+                      <p style={{ color: '#16a34a', fontSize: '.875rem', marginTop: '6px', fontWeight: 600 }}>
+                        ✓ クーポンが適用されます。ご来園時に割引いたします。
+                      </p>
+                    )}
+                  </Field>
+                ) : (
+                  <p style={{ fontSize: '.875rem', color: 'var(--g500)' }}>
+                    {couponData?.used
+                      ? '🎟️ このクーポンはすでに使用済みです。'
+                      : '利用回数5回達成でクーポンが発行されます。'}
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* 予約情報 */}
           <div className="form-section">
