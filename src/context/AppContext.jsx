@@ -29,6 +29,7 @@ export function AppProvider({ children }) {
   const [nurses, setNurses] = useState([])
   const [visitCounts, setVisitCounts] = useState({})
   const [coupons, setCoupons] = useState({})
+  const [closedDates, setClosedDates] = useState([])
   const [lastReservation, setLastReservation] = useState(null)
   const [loading, setLoading] = useState(true)
 
@@ -58,6 +59,9 @@ export function AppProvider({ children }) {
         snap.docs.forEach(d => { data[d.id] = d.data() })
         setCoupons(data)
         setLoading(false)
+      }),
+      onSnapshot(collection(db, 'closedDates'), (snap) => {
+        setClosedDates(snap.docs.map(d => d.id))
       }),
     ]
     return () => unsubs.forEach(u => u())
@@ -114,10 +118,20 @@ export function AppProvider({ children }) {
     return Object.keys(shifts)
       .filter(date => {
         if (date < today) return false
+        if (closedDates.includes(date)) return false
         const assignments = shifts[date]?.assignments || {}
         return Object.values(assignments).some(ids => Array.isArray(ids) && ids.length > 0)
       })
       .sort()
+  }
+
+  // ===== 休園日 =====
+  const addClosedDate = async (date) => {
+    await setDoc(doc(db, 'closedDates', date), { createdAt: serverTimestamp() })
+  }
+
+  const removeClosedDate = async (date) => {
+    await deleteDoc(doc(db, 'closedDates', date))
   }
 
   const getAvailableSlots = (date) => {
@@ -215,6 +229,7 @@ export function AppProvider({ children }) {
       addNurseToSlot, removeNurseFromSlot,
       getAvailableDates, getAvailableSlots, getSlotNurses,
       visitCounts, coupons, markCouponUsed,
+      closedDates, addClosedDate, removeClosedDate,
       lastReservation, loading,
     }}>
       {children}

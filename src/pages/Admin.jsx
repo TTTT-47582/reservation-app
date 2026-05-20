@@ -29,6 +29,7 @@ export default function Admin() {
     addShiftDate, removeShiftDate, addNurseToSlot, removeNurseFromSlot,
     getAvailableDates, getAvailableSlots, getSlotNurses,
     visitCounts, coupons, markCouponUsed,
+    closedDates, addClosedDate, removeClosedDate,
   } = useApp()
   const [user, setUser] = useState(null)
   const [authLoading, setAuthLoading] = useState(true)
@@ -45,6 +46,7 @@ export default function Admin() {
   const [filter, setFilter] = useState('all')
   const [newNurseName, setNewNurseName] = useState('')
   const [selectedMonth, setSelectedMonth] = useState(() => new Date().toISOString().slice(0, 7))
+  const [newClosedDate, setNewClosedDate] = useState('')
 
   if (authLoading) return <div style={{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', background:'var(--g900)', color:'var(--white)', fontSize:'1rem' }}>読み込み中…</div>
   if (!user) return null
@@ -103,6 +105,9 @@ export default function Admin() {
             </button>
             <button className={`admin-tab${tab === 'shifts' ? ' active' : ''}`} onClick={() => setTab('shifts')}>
               📅 シフト管理
+            </button>
+            <button className={`admin-tab${tab === 'closed' ? ' active' : ''}`} onClick={() => setTab('closed')}>
+              🚫 休園日
             </button>
             <button className={`admin-tab${tab === 'coupons' ? ' active' : ''}`} onClick={() => setTab('coupons')}>
               🎟️ クーポン管理
@@ -296,6 +301,57 @@ export default function Admin() {
                   ))}
                 </div>
               )}
+            </>
+          )}
+
+          {/* ===== 休園日管理 ===== */}
+          {tab === 'closed' && (
+            <>
+              <div className="nurse-mgmt-card">
+                <div className="nurse-mgmt-title">🚫 休園日を追加</div>
+                <p style={{ fontSize: '.875rem', color: 'var(--g500)', marginBottom: '12px' }}>
+                  登録した日は予約フォーム・カレンダーに表示されなくなります。
+                </p>
+                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                  <input
+                    className="form-input"
+                    type="date"
+                    value={newClosedDate}
+                    min={today}
+                    style={{ maxWidth: '200px' }}
+                    onChange={e => setNewClosedDate(e.target.value)}
+                  />
+                  <button className="btn btn-primary" onClick={async () => {
+                    if (!newClosedDate) return
+                    await addClosedDate(newClosedDate)
+                    setNewClosedDate('')
+                  }}>
+                    追加
+                  </button>
+                </div>
+              </div>
+
+              <div className="nurse-mgmt-card">
+                <div className="nurse-mgmt-title">📋 登録済み休園日</div>
+                {closedDates.filter(d => d >= today).sort().length === 0 ? (
+                  <p style={{ fontSize: '.875rem', color: 'var(--g400)', marginTop: '8px' }}>
+                    休園日は登録されていません
+                  </p>
+                ) : (
+                  <div>
+                    {closedDates.filter(d => d >= today).sort().map(date => (
+                      <div key={date} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid var(--g100)' }}>
+                        <span style={{ fontWeight: 600, color: 'var(--g700)' }}>{formatDateFull(date)}</span>
+                        <button className="btn btn-sm btn-danger" onClick={() => {
+                          if (confirm(`${formatDateFull(date)}を休園日から外しますか？`)) removeClosedDate(date)
+                        }}>
+                          削除
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </>
           )}
 
