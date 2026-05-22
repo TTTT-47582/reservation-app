@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { onAuthStateChanged, signOut } from 'firebase/auth'
-import { auth } from '../firebase'
+import { auth, storage } from '../firebase'
+import { ref as sRef, uploadBytes, getDownloadURL } from 'firebase/storage'
 import { useApp, TIME_SLOTS, NURSE_COLORS } from '../context/AppContext'
 import { sendConfirmedEmail, sendCouponEmail } from '../lib/email'
 
@@ -30,6 +31,7 @@ export default function Admin() {
     getAvailableDates, getAvailableSlots, getSlotNurses,
     visitCounts, coupons, markCouponUsed, reissueCoupon,
     closedDates, addClosedDate, removeClosedDate,
+    photoAlbums, createPhotoAlbum, addPhotoUrl, removePhotoUrl, deletePhotoAlbum,
   } = useApp()
   const [user, setUser] = useState(null)
   const [authLoading, setAuthLoading] = useState(true)
@@ -47,6 +49,10 @@ export default function Admin() {
   const [newNurseName, setNewNurseName] = useState('')
   const [selectedMonth, setSelectedMonth] = useState(() => new Date().toISOString().slice(0, 7))
   const [newClosedDate, setNewClosedDate] = useState('')
+  const [photoForm, setPhotoForm] = useState({ childName: '', parentName: '', phone: '', date: new Date().toISOString().split('T')[0], expiryDays: 3 })
+  const [photoFormRes, setPhotoFormRes] = useState('')
+  const [uploadingId, setUploadingId] = useState(null)
+  const fileInputRef = useRef({})
 
   if (authLoading) return <div style={{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', background:'var(--g900)', color:'var(--white)', fontSize:'1rem' }}>読み込み中…</div>
   if (!user) return null
@@ -108,6 +114,9 @@ export default function Admin() {
             </button>
             <button className={`admin-tab${tab === 'closed' ? ' active' : ''}`} onClick={() => setTab('closed')}>
               🚫 休園日
+            </button>
+            <button className={`admin-tab${tab === 'photos' ? ' active' : ''}`} onClick={() => setTab('photos')}>
+              📸 写真送付
             </button>
             <button className={`admin-tab${tab === 'coupons' ? ' active' : ''}`} onClick={() => setTab('coupons')}>
               🎟️ クーポン管理
@@ -357,6 +366,161 @@ export default function Admin() {
             </>
           )}
 
+          {/* ===== 写真送付 ===== */}
+          {tab === 'photos' && (() => {
+            const handleCreateAlbum = async () => {
+              if (!photoForm.childName || !photoForm.date) return
+              await createPhotoAlbum(photoForm)
+              setPhotoForm({ childName: '', parentName: '', phone: '', date: today, expiryDays: 3 })
+              setPhotoFormRes('')
+            }
+
+            const handleUpload = async (albumId, files) => {
+              setUploadingId(albumId)
+              for (const file of Array.from(files)) {
+                const filename = `${Date.now()}_${file.name}`
+                const ref = sRef(storage, `photos/${albumId}/${filename}`)
+                await uploadBytes(ref, file)
+                const url = await getDownloadURL(ref)
+                await addPhotoUrl(albumId, url)
+              }
+              setUploadingId(null)
+            }
+
+            const shareText = (album) => {
+              const url = `${window.location.origin}/photos/${album.id}`
+              return `🌳 けやき保育園より\nお子様の写真をご覧いただけます📸\n\n【閲覧URL】\n${url}\n\n【PINコード】\n${album.pin}\n\n有効期限：${new Date(album.expiresAt).toLocaleDateString('ja-JP')}まで`
+            }
+
+            return (
+              <>
+                {/* アルバム作成 */}
+                <div className="nurse-mgmt-card">
+                  <div className="nurse-mgmt-title">📸 新しいアルバムを作成</div>
+                  <div style={{ marginBottom: '12px' }}>
+                    <label style={{ fontSize: '.8125rem', color: 'var(--g500)', display: 'block', marginBottom: '4px' }}>予約から自動入力</label>
+                    <select className="form-select" value={photoFormRes} onChange={e => {
+                      setPhotoFormRes(e.target.value)
+                      const r = reservations.find(r => r.id === e.target.value)
+                      if (r) setPhotoForm(p => ({ ...p, childName: r.childName, parentName: r.parentName, phone: r.phone, date: r.date }))
+                    }}>
+                      <option value="">予約を選択（任意）</option>
+                      {reservations.filter(r => r.status !== 'cancelled').slice(0, 30).map(r => (
+                        <option key={r.id} value={r.id}>{formatDate(r.date)} {r.childName}（{r.parentName}）</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="form-grid-2" style={{ gap: '8px' }}>
+                    <div>
+                      <label style={{ fontSize: '.8125rem', color: 'var(--g500)' }}>お子様のお名前*</label>
+                      <input className="form-input" placeholder="山田太郎" value={photoForm.childName}
+                        onChange={e => setPhotoForm(p => ({ ...p, childName: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '.8125rem', color: 'var(--g500)' }}>保護者名</label>
+                      <input className="form-input" placeholder="山田花子" value={photoForm.parentName}
+                        onChange={e => setPhotoForm(p => ({ ...p, parentName: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '.8125rem', color: 'var(--g500)' }}>来園日*</label>
+                      <input className="form-input" type="date" value={photoForm.date}
+                        onChange={e => setPhotoForm(p => ({ ...p, date: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '.8125rem', color: 'var(--g500)' }}>保存日数</label>
+                      <select className="form-select" value={photoForm.expiryDays}
+                        onChange={e => setPhotoForm(p => ({ ...p, expiryDays: e.target.value }))}>
+                        {[1,2,3,5,7].map(d => <option key={d} value={d}>{d}日間</option>)}
+                      </select>
+                    </div>
+                  </div>
+                  <button className="btn btn-primary" style={{ marginTop: '12px' }} onClick={handleCreateAlbum}
+                    disabled={!photoForm.childName || !photoForm.date}>
+                    アルバムを作成
+                  </button>
+                </div>
+
+                {/* アルバム一覧 */}
+                {photoAlbums.length === 0 ? (
+                  <div className="empty-state">
+                    <div className="empty-icon">📷</div>
+                    <div className="empty-text">アルバムはまだありません</div>
+                  </div>
+                ) : photoAlbums.map(album => {
+                  const expired = new Date(album.expiresAt) < new Date()
+                  return (
+                    <div key={album.id} className="nurse-mgmt-card" style={{ opacity: expired ? 0.6 : 1 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '8px' }}>
+                        <div>
+                          <div style={{ fontWeight: 700, color: 'var(--g800)', fontSize: '1rem' }}>
+                            {album.childName}さん
+                            {expired && <span className="badge badge-gray" style={{ marginLeft: '8px' }}>期限切れ</span>}
+                          </div>
+                          <div style={{ fontSize: '.8125rem', color: 'var(--g500)', marginTop: '2px' }}>
+                            {formatDateFull(album.date)}　保護者：{album.parentName || '—'}
+                          </div>
+                          <div style={{ display: 'flex', gap: '16px', marginTop: '6px', fontSize: '.8125rem' }}>
+                            <span>🔑 PIN：<strong style={{ fontSize: '1rem', letterSpacing: '0.15em' }}>{album.pin}</strong></span>
+                            <span>📅 期限：{new Date(album.expiresAt).toLocaleDateString('ja-JP')}</span>
+                            <span>🖼️ {album.photoUrls?.length || 0}枚</span>
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                          {!expired && (
+                            <>
+                              <button className="btn btn-sm btn-secondary" onClick={() => {
+                                const text = shareText(album)
+                                navigator.clipboard.writeText(text).then(() => alert('コピーしました'))
+                              }}>URLをコピー</button>
+                              <button className="btn btn-sm btn-secondary" style={{ background: '#06C755', color: 'white', border: 'none' }} onClick={() => {
+                                window.open(`https://line.me/R/msg/text/?${encodeURIComponent(shareText(album))}`, '_blank')
+                              }}>LINEで送る</button>
+                            </>
+                          )}
+                          <button className="btn btn-sm btn-danger" onClick={() => {
+                            if (confirm(`${album.childName}さんのアルバムを削除しますか？`)) deletePhotoAlbum(album.id)
+                          }}>削除</button>
+                        </div>
+                      </div>
+
+                      {/* 写真アップロード */}
+                      {!expired && (
+                        <div style={{ marginTop: '12px', borderTop: '1px solid var(--g100)', paddingTop: '12px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              multiple
+                              style={{ display: 'none' }}
+                              ref={el => { fileInputRef.current[album.id] = el }}
+                              onChange={e => handleUpload(album.id, e.target.files)}
+                            />
+                            <button className="btn btn-sm btn-primary"
+                              disabled={uploadingId === album.id}
+                              onClick={() => fileInputRef.current[album.id]?.click()}>
+                              {uploadingId === album.id ? 'アップロード中…' : '＋ 写真を追加'}
+                            </button>
+                          </div>
+                          {album.photoUrls?.length > 0 && (
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: '6px', marginTop: '10px' }}>
+                              {album.photoUrls.map((url, i) => (
+                                <div key={i} style={{ position: 'relative', paddingBottom: '100%', borderRadius: '6px', overflow: 'hidden', background: 'var(--g100)' }}>
+                                  <img src={url} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+                                  <button style={{ position: 'absolute', top: 2, right: 2, background: 'rgba(0,0,0,0.5)', color: 'white', border: 'none', borderRadius: '50%', width: '20px', height: '20px', fontSize: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                    onClick={() => removePhotoUrl(album.id, url)}>×</button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </>
+            )
+          })()}
+
           {/* ===== クーポン管理 ===== */}
           {tab === 'coupons' && (
             <>
@@ -398,11 +562,18 @@ export default function Admin() {
                           ? <span className="badge badge-gray">使用済み</span>
                           : <span className="badge badge-green">未使用</span>}
                       </div>
-                      <div style={{ minWidth: '130px', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                      <div style={{ minWidth: '150px', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                         {!info.used && (
-                          <button className="btn btn-sm btn-secondary" onClick={() => markCouponUsed(phone)}>
-                            使用済みに
-                          </button>
+                          <>
+                            <button className="btn btn-sm btn-secondary" onClick={() => markCouponUsed(phone)}>
+                              使用済みに
+                            </button>
+                            <button className="btn btn-sm btn-secondary" style={{ background: '#06C755', color: 'white', border: 'none' }} onClick={() => {
+                              const name = (() => { const r = reservations.find(r => r.phone === phone); return r ? r.parentName : '' })()
+                              const msg = `🌳 けやき保育園より\n${name ? name + ' 様\n' : ''}5回目のご利用ありがとうございます！\n割引クーポンをプレゼントします🎁\n\n【クーポンコード】\n${info.code}\n\n次回ご予約フォームのクーポン欄へ入力してください。`
+                              window.open(`https://line.me/R/msg/text/?${encodeURIComponent(msg)}`, '_blank')
+                            }}>LINEで送る</button>
+                          </>
                         )}
                         <button className="btn btn-sm btn-secondary" onClick={async () => {
                           if (confirm(`${phone} のクーポンを再発行しますか？\n現在のコードは無効になります。`)) {

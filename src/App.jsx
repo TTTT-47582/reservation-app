@@ -7,6 +7,7 @@ import ReservationForm from './pages/ReservationForm'
 import Confirmation from './pages/Confirmation'
 import Admin from './pages/Admin'
 import Cancel from './pages/Cancel'
+import PhotoViewer from './pages/PhotoViewer'
 
 export default function App() {
   return (
@@ -18,6 +19,7 @@ export default function App() {
           <Route path="/reservation" element={<ReservationForm />} />
           <Route path="/confirmation" element={<Confirmation />} />
           <Route path="/cancel" element={<Cancel />} />
+          <Route path="/photos/:albumId" element={<PhotoViewer />} />
           <Route path="/login" element={<Login />} />
           <Route path="/admin" element={<Admin />} />
         </Routes>

@@ -30,6 +30,7 @@ export function AppProvider({ children }) {
   const [visitCounts, setVisitCounts] = useState({})
   const [coupons, setCoupons] = useState({})
   const [closedDates, setClosedDates] = useState([])
+  const [photoAlbums, setPhotoAlbums] = useState([])
   const [lastReservation, setLastReservation] = useState(null)
   const [loading, setLoading] = useState(true)
 
@@ -63,6 +64,10 @@ export function AppProvider({ children }) {
       onSnapshot(collection(db, 'closedDates'), (snap) => {
         setClosedDates(snap.docs.map(d => d.id))
       }),
+      onSnapshot(
+        query(collection(db, 'photoAlbums'), orderBy('createdAt', 'desc')),
+        (snap) => setPhotoAlbums(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+      ),
     ]
     return () => unsubs.forEach(u => u())
   }, [])
@@ -132,6 +137,39 @@ export function AppProvider({ children }) {
 
   const removeClosedDate = async (date) => {
     await deleteDoc(doc(db, 'closedDates', date))
+  }
+
+  // ===== 写真アルバム =====
+  const createPhotoAlbum = async ({ childName, parentName, phone, date, expiryDays = 3 }) => {
+    const pin = String(Math.floor(1000 + Math.random() * 9000))
+    const expiresAt = new Date()
+    expiresAt.setDate(expiresAt.getDate() + Number(expiryDays))
+    const ref = await addDoc(collection(db, 'photoAlbums'), {
+      childName, parentName, phone, date,
+      pin,
+      expiresAt: expiresAt.toISOString(),
+      photoUrls: [],
+      createdAt: serverTimestamp(),
+    })
+    return { id: ref.id, pin }
+  }
+
+  const addPhotoUrl = async (albumId, url) => {
+    const ref = doc(db, 'photoAlbums', albumId)
+    const snap = await getDoc(ref)
+    const current = snap.data()?.photoUrls || []
+    await updateDoc(ref, { photoUrls: [...current, url] })
+  }
+
+  const removePhotoUrl = async (albumId, url) => {
+    const ref = doc(db, 'photoAlbums', albumId)
+    const snap = await getDoc(ref)
+    const current = snap.data()?.photoUrls || []
+    await updateDoc(ref, { photoUrls: current.filter(u => u !== url) })
+  }
+
+  const deletePhotoAlbum = async (albumId) => {
+    await deleteDoc(doc(db, 'photoAlbums', albumId))
   }
 
   const getAvailableSlots = (date) => {
@@ -251,6 +289,7 @@ export function AppProvider({ children }) {
       getAvailableDates, getAvailableSlots, getSlotNurses,
       visitCounts, coupons, markCouponUsed, reissueCoupon,
       closedDates, addClosedDate, removeClosedDate,
+      photoAlbums, createPhotoAlbum, addPhotoUrl, removePhotoUrl, deletePhotoAlbum,
       lastReservation, loading,
     }}>
       {children}
