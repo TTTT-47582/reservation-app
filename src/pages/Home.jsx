@@ -14,20 +14,23 @@ export default function Home() {
         <section className="hero">
           <div className="hero-inner">
             <div>
-              <div className="hero-badge">一時保育オンライン予約</div>
-              <h1 className="hero-title">けやき保育園へようこそ</h1>
+              <div className="hero-badge">🌿 一時保育オンライン予約</div>
+              <h1 className="hero-title">
+                🌳 けやき保育園へ<br />
+                <span>ようこそ！</span>
+              </h1>
               <p className="hero-subtitle">
-                お仕事・通院・リフレッシュなど、さまざまなシーンで<br />
-                一時保育をご利用いただけます。<br />
+                お仕事・通院・リフレッシュなど、<br />
+                さまざまなシーンで一時保育をご利用いただけます。<br />
                 スマートフォン・PCから24時間受付中です。
               </p>
               <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
                 <button className="btn btn-lg" onClick={() => navigate('/terms')}
-                  style={{ background: 'var(--white)', color: 'var(--p600)', fontWeight: 700 }}>
+                  style={{ background: 'var(--white)', color: 'var(--green700)', fontWeight: 800, borderRadius: '999px', boxShadow: '0 4px 16px rgba(0,0,0,.15)' }}>
                   予約をはじめる →
                 </button>
                 <button className="btn btn-lg" onClick={() => setShowCalendar(true)}
-                  style={{ background: 'rgba(255,255,255,0.15)', color: 'var(--white)', fontWeight: 700, border: '2px solid rgba(255,255,255,0.6)' }}>
+                  style={{ background: 'var(--sun400)', color: '#1a3a00', fontWeight: 800, border: 'none', borderRadius: '999px', boxShadow: '0 4px 16px rgba(250,204,21,.4)' }}>
                   📅 予約可能日を確認
                 </button>
               </div>
@@ -35,7 +38,7 @@ export default function Home() {
             </div>
             <div>
               <div className="hero-card">
-                <div className="hero-card-title">ご利用案内</div>
+                <div className="hero-card-title">🌱 ご利用案内</div>
                 <div className="info-grid">
                   <div className="info-item">
                     <span className="info-icon">⏰</span>
@@ -73,8 +76,8 @@ export default function Home() {
 
         {/* Steps */}
         <section className="steps-section">
-          <h2 className="steps-title">ご予約の流れ</h2>
-          <p className="steps-subtitle">かんたん3ステップで予約が完了します</p>
+          <h2 className="steps-title">✨ ご予約の流れ</h2>
+          <p className="steps-subtitle">かんたん3ステップで予約が完了します🎉</p>
           <div className="steps">
             <div className="step">
               <div className="step-num">01</div>
@@ -97,10 +100,10 @@ export default function Home() {
         </section>
 
         {/* Cancel */}
-        <section style={{ background: 'var(--white)', padding: '40px 20px', borderTop: '1px solid var(--g200)' }}>
+        <section style={{ background: 'var(--white)', padding: '40px 20px', borderTop: '3px solid var(--green200)' }}>
           <div style={{ maxWidth: '700px', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
             <div>
-              <div style={{ fontWeight: 700, fontSize: '1.0625rem', color: 'var(--g800)', marginBottom: '6px' }}>
+              <div style={{ fontWeight: 800, fontSize: '1.0625rem', color: 'var(--green800)', marginBottom: '6px' }}>
                 🗓️ 予約のキャンセル・変更はこちら
               </div>
               <div style={{ fontSize: '.875rem', color: 'var(--g500)' }}>
@@ -108,7 +111,7 @@ export default function Home() {
               </div>
             </div>
             <button className="btn btn-secondary" onClick={() => navigate('/cancel')}
-              style={{ whiteSpace: 'nowrap', fontWeight: 700 }}>
+              style={{ whiteSpace: 'nowrap', fontWeight: 700, borderColor: 'var(--green600)', color: 'var(--green700)' }}>
               キャンセル・変更ページへ →
             </button>
           </div>
