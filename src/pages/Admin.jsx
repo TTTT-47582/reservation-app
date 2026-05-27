@@ -48,6 +48,7 @@ export default function Admin() {
   const [filter, setFilter] = useState('all')
   const [newNurseName, setNewNurseName] = useState('')
   const [selectedMonth, setSelectedMonth] = useState(() => new Date().toISOString().slice(0, 7))
+  const [statsMonth, setStatsMonth] = useState(() => new Date().toISOString().slice(0, 7))
   const [newClosedDate, setNewClosedDate] = useState('')
   const [photoForm, setPhotoForm] = useState({ childName: '', parentName: '', phone: '', date: new Date().toISOString().split('T')[0], expiryDays: 3 })
   const [photoFormRes, setPhotoFormRes] = useState('')
@@ -63,12 +64,30 @@ export default function Admin() {
     r.status === filter
   )
 
+  // 累計統計
   const stats = {
     total: reservations.length,
     pending: reservations.filter(r => r.status === 'pending').length,
     confirmed: reservations.filter(r => r.status === 'confirmed').length,
     coupon: Object.keys(coupons).length,
   }
+
+  // 月別統計（選択月の予約日ベース）
+  const monthlyRes = reservations.filter(r => r.date?.startsWith(statsMonth))
+  const monthlyStats = {
+    total: monthlyRes.length,
+    pending: monthlyRes.filter(r => r.status === 'pending').length,
+    confirmed: monthlyRes.filter(r => r.status === 'confirmed').length,
+    cancelled: monthlyRes.filter(r => r.status === 'cancelled').length,
+    coupon: Object.values(coupons).filter(c => c.issuedAt?.startsWith(statsMonth)).length,
+  }
+
+  // 月選択肢（過去12ヶ月 + 来月まで）
+  const statsMonthOptions = Array.from({ length: 14 }, (_, i) => {
+    const d = new Date()
+    d.setMonth(d.getMonth() - 12 + i)
+    return d.toISOString().slice(0, 7)
+  }).reverse()
 
   const handleAddNurse = async () => {
     if (!newNurseName.trim()) return
@@ -128,22 +147,56 @@ export default function Admin() {
           {/* ===== 予約一覧 ===== */}
           {tab === 'reservations' && (
             <>
+              {/* 月別統計 */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px', flexWrap: 'wrap' }}>
+                <span style={{ fontWeight: 800, fontSize: '.9375rem', color: 'var(--green800)' }}>📅 月別統計</span>
+                <select className="form-select" style={{ width: 'auto', fontSize: '.875rem', padding: '6px 32px 6px 12px' }}
+                  value={statsMonth} onChange={e => setStatsMonth(e.target.value)}>
+                  {statsMonthOptions.map(m => {
+                    const [y, mo] = m.split('-')
+                    return <option key={m} value={m}>{y}年{parseInt(mo)}月</option>
+                  })}
+                </select>
+              </div>
+              <div className="stats-row" style={{ marginBottom: '10px' }}>
+                <div className="stat-card" style={{ borderTopColor: 'var(--green500)' }}>
+                  <div className="stat-val blue">{monthlyStats.total}</div>
+                  <div className="stat-label">予約数</div>
+                </div>
+                <div className="stat-card" style={{ borderTopColor: 'var(--amber400)' }}>
+                  <div className="stat-val" style={{ color: 'var(--amber600)' }}>{monthlyStats.pending}</div>
+                  <div className="stat-label">未確認</div>
+                </div>
+                <div className="stat-card" style={{ borderTopColor: 'var(--green400)' }}>
+                  <div className="stat-val green">{monthlyStats.confirmed}</div>
+                  <div className="stat-label">確定済み</div>
+                </div>
+                <div className="stat-card" style={{ borderTopColor: 'var(--sun400)' }}>
+                  <div className="stat-val yellow">{monthlyStats.coupon}</div>
+                  <div className="stat-label">クーポン付与</div>
+                </div>
+              </div>
+
+              {/* 累計統計 */}
+              <div style={{ fontWeight: 800, fontSize: '.9375rem', color: 'var(--g500)', marginBottom: '12px', marginTop: '20px' }}>
+                📊 累計
+              </div>
               <div className="stats-row">
-                <div className="stat-card">
+                <div className="stat-card" style={{ borderTopColor: 'var(--g300)', background: 'var(--g50)' }}>
                   <div className="stat-val blue">{stats.total}</div>
                   <div className="stat-label">総予約数</div>
                 </div>
-                <div className="stat-card">
+                <div className="stat-card" style={{ borderTopColor: 'var(--g300)', background: 'var(--g50)' }}>
                   <div className="stat-val" style={{ color: 'var(--amber600)' }}>{stats.pending}</div>
-                  <div className="stat-label">未確認</div>
+                  <div className="stat-label">未確認（現在）</div>
                 </div>
-                <div className="stat-card">
+                <div className="stat-card" style={{ borderTopColor: 'var(--g300)', background: 'var(--g50)' }}>
                   <div className="stat-val green">{stats.confirmed}</div>
-                  <div className="stat-label">確定済み</div>
+                  <div className="stat-label">確定済み（現在）</div>
                 </div>
-                <div className="stat-card">
+                <div className="stat-card" style={{ borderTopColor: 'var(--g300)', background: 'var(--g50)' }}>
                   <div className="stat-val yellow">{stats.coupon}</div>
-                  <div className="stat-label">クーポン付与数</div>
+                  <div className="stat-label">累計クーポン付与</div>
                 </div>
               </div>
 
