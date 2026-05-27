@@ -115,9 +115,11 @@ export default function Admin() {
             <button className={`admin-tab${tab === 'closed' ? ' active' : ''}`} onClick={() => setTab('closed')}>
               🚫 休園日
             </button>
+            {/* 写真送付タブ：Firebase Storage（Blaze）が必要なため一時非表示
             <button className={`admin-tab${tab === 'photos' ? ' active' : ''}`} onClick={() => setTab('photos')}>
               📸 写真送付
             </button>
+            */}
             <button className={`admin-tab${tab === 'coupons' ? ' active' : ''}`} onClick={() => setTab('coupons')}>
               🎟️ クーポン管理
             </button>
