@@ -226,8 +226,14 @@ export function AppProvider({ children }) {
     }
     const phone = sanitized.phone
 
-    // 同一電話番号の有効予約が3件以上なら拒否（キャンセル待ちは除く）
-    const active = reservations.filter(r => r.phone === phone && r.status !== 'cancelled' && r.status !== 'waitlisted')
+    // 同一電話番号の有効予約が3件以上なら拒否（過去・キャンセル・キャンセル待ちは除く）
+    const today = new Date().toISOString().split('T')[0]
+    const active = reservations.filter(r =>
+      r.phone === phone &&
+      r.status !== 'cancelled' &&
+      r.status !== 'waitlisted' &&
+      r.date >= today
+    )
     if (active.length >= 3) return { error: 'max_reservations' }
 
     // 同一電話番号・同一日付・同一時間帯の重複を拒否
