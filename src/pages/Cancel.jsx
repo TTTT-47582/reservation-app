@@ -37,11 +37,13 @@ export default function Cancel() {
     ? reservations.find(r => r.id === reservationId)
     : null
 
-  // 電話番号一致の予約（未キャンセル）
+  // 電話番号一致の予約（未キャンセル・今日以降のみ）
+  const today = new Date().toISOString().split('T')[0]
   const matchedReservations = searched
     ? reservations.filter(r =>
         (r.phone === phone.replace(/-/g, '') || r.phone === phone) &&
-        r.status !== 'cancelled'
+        r.status !== 'cancelled' &&
+        r.date >= today
       )
     : []
 
