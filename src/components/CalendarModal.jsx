@@ -7,7 +7,7 @@ const MONTHS = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', 
 
 export default function CalendarModal({ onClose }) {
   const navigate = useNavigate()
-  const { getAvailableDates, getAvailableSlots, termsAgreed, setTermsAgreed } = useApp()
+  const { getAvailableDates, getAvailableStartTimes, termsAgreed, setTermsAgreed } = useApp()
 
   const today = new Date()
   const todayStr = today.toISOString().split('T')[0]
@@ -43,12 +43,13 @@ export default function CalendarModal({ onClose }) {
     }
   }
 
-  const handleSlotClick = (slot) => {
+  const handleSlotClick = (startTime) => {
     const existing = JSON.parse(sessionStorage.getItem('reservationForm') || '{}')
     sessionStorage.setItem('reservationForm', JSON.stringify({
       ...existing,
       date: selectedDate,
-      timeSlot: slot,
+      startTime,
+      endTime: '',
     }))
     onClose()
     navigate(termsAgreed ? '/reservation' : '/terms')
@@ -60,7 +61,7 @@ export default function CalendarModal({ onClose }) {
     return `${dt.getMonth() + 1}月${dt.getDate()}日（${DAYS[dt.getDay()]}）`
   }
 
-  const availableSlots = selectedDate ? getAvailableSlots(selectedDate) : []
+  const availableSlots = selectedDate ? getAvailableStartTimes(selectedDate) : []
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -112,14 +113,14 @@ export default function CalendarModal({ onClose }) {
 
         {selectedDate && (
           <div className="cal-slots">
-            <div className="cal-slots-title">{formatDateLabel(selectedDate)} の予約可能時間帯</div>
+            <div className="cal-slots-title">{formatDateLabel(selectedDate)} の予約可能な開始時刻</div>
             {availableSlots.length === 0 ? (
               <p style={{ color: 'var(--g400)', fontSize: '.875rem' }}>この日は予約可能な時間帯がありません</p>
             ) : (
               <div className="cal-slot-list">
-                {availableSlots.map(slot => (
-                  <button key={slot} className="cal-slot-btn" onClick={() => handleSlotClick(slot)}>
-                    {slot}
+                {availableSlots.map(t => (
+                  <button key={t} className="cal-slot-btn" onClick={() => handleSlotClick(t)}>
+                    {t}〜
                     <span style={{ fontSize: '.75rem', marginLeft: '6px' }}>→ 予約へ</span>
                   </button>
                 ))}

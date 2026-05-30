@@ -18,6 +18,13 @@ export const NURSE_COLORS = [
   '#CFFAFE', '#FFE4E6', '#DCFCE7', '#FEF9C3', '#E0E7FF',
 ]
 
+// 時間範囲を { startH, endH } に変換 ("09:00〜17:00" → { startH:9, endH:17 })
+export function parseTimeRange(timeSlot) {
+  if (!timeSlot) return { startH: 0, endH: 0 }
+  const [s, e] = timeSlot.split('〜')
+  return { startH: parseInt(s) || 0, endH: parseInt(e) || 0 }
+}
+
 function generateCouponCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
   const seg = () => Array.from({ length: 4 }, () => chars[Math.floor(Math.random() * chars.length)]).join('')
@@ -188,16 +195,16 @@ export function AppProvider({ children }) {
   const getSlotCapacity = (date, slot) => {
     const nurseCount = getSlotNurses(date, slot).length
     const maxCapacity = nurseCount * 5
+    const { startH: slotStart, endH: slotEnd } = parseTimeRange(slot)
+    const overlaps = (r) => {
+      const { startH, endH } = parseTimeRange(r.timeSlot)
+      return startH < slotEnd && endH > slotStart
+    }
     const active = reservations.filter(r =>
-      r.date === date &&
-      r.timeSlot === slot &&
-      r.status !== 'cancelled' &&
-      r.status !== 'waitlisted'
+      r.date === date && r.status !== 'cancelled' && r.status !== 'waitlisted' && overlaps(r)
     )
     const waitlisted = reservations.filter(r =>
-      r.date === date &&
-      r.timeSlot === slot &&
-      r.status === 'waitlisted'
+      r.date === date && r.status === 'waitlisted' && overlaps(r)
     )
     return {
       nurseCount,
@@ -207,6 +214,28 @@ export function AppProvider({ children }) {
       waitlistCount: waitlisted.length,
       isFull: nurseCount > 0 && active.length >= maxCapacity,
     }
+  }
+
+  // 指定日の予約可能な開始時刻一覧（保育士が配置されているスロットの開始時刻）
+  const getAvailableStartTimes = (date) => {
+    const assignments = shifts[date]?.assignments || {}
+    return TIME_SLOTS
+      .filter(slot => (assignments[slot] || []).length > 0)
+      .map(slot => slot.split('〜')[0])
+  }
+
+  // 指定日・開始時刻から連続して保育士が配置されている終了時刻一覧
+  const getConsecutiveEndTimes = (date, startTime) => {
+    if (!startTime) return []
+    const assignments = shifts[date]?.assignments || {}
+    const startH = parseInt(startTime)
+    const ends = []
+    for (let h = startH; h <= 18; h++) {
+      const slot = `${String(h).padStart(2, '0')}:00〜${String(h + 1).padStart(2, '0')}:00`
+      if ((assignments[slot] || []).length === 0) break
+      ends.push(`${String(h + 1).padStart(2, '0')}:00`)
+    }
+    return ends
   }
 
   // ===== 予約 =====
@@ -236,26 +265,25 @@ export function AppProvider({ children }) {
     )
     if (active.length >= 3) return { error: 'max_reservations' }
 
-    // 同一電話番号・同一日付・同一時間帯の重複を拒否
-    const duplicate = reservations.some(r =>
-      r.phone === phone &&
-      r.date === sanitized.date &&
-      r.timeSlot === sanitized.timeSlot &&
-      r.status !== 'cancelled' &&
-      r.status !== 'waitlisted'
-    )
+    // 同一電話番号・同一日付・時間帯が重複する予約を拒否
+    const { startH: newStart, endH: newEnd } = parseTimeRange(sanitized.timeSlot)
+    const duplicate = reservations.some(r => {
+      if (r.phone !== phone || r.date !== sanitized.date) return false
+      if (r.status === 'cancelled' || r.status === 'waitlisted') return false
+      const { startH, endH } = parseTimeRange(r.timeSlot)
+      return startH < newEnd && endH > newStart
+    })
     if (duplicate) return { error: 'duplicate' }
 
-    // シフト確認（保育士が配置されているスロットのみ予約可）
+    // シフト確認・定員チェック（範囲内の全1時間スロットを確認）
     if (Object.keys(shifts).length > 0) {
       const assignments = shifts[sanitized.date]?.assignments || {}
-      const slotNurses = assignments[sanitized.timeSlot] || []
-      if (slotNurses.length === 0) return { error: 'no_shift' }
+      for (let h = newStart; h < newEnd; h++) {
+        const slot = `${String(h).padStart(2, '0')}:00〜${String(h + 1).padStart(2, '0')}:00`
+        if ((assignments[slot] || []).length === 0) return { error: 'no_shift' }
+        if (getSlotCapacity(sanitized.date, slot).isFull) return { error: 'full' }
+      }
     }
-
-    // 定員チェック（保育士1名：園児5人まで）
-    const capacity = getSlotCapacity(sanitized.date, sanitized.timeSlot)
-    if (capacity.isFull) return { error: 'full' }
 
     const visitRef = doc(db, 'visitCounts', phone)
     const visitSnap = await getDoc(visitRef)
@@ -311,19 +339,21 @@ export function AppProvider({ children }) {
     }
     const phone = sanitized.phone
 
-    // シフト確認
+    // シフト確認（範囲内の全スロット）
+    const { startH: wStart, endH: wEnd } = parseTimeRange(sanitized.timeSlot)
     if (Object.keys(shifts).length > 0) {
       const assignments = shifts[sanitized.date]?.assignments || {}
-      const slotNurses = assignments[sanitized.timeSlot] || []
-      if (slotNurses.length === 0) return { error: 'no_shift' }
+      for (let h = wStart; h < wEnd; h++) {
+        const slot = `${String(h).padStart(2, '0')}:00〜${String(h + 1).padStart(2, '0')}:00`
+        if ((assignments[slot] || []).length === 0) return { error: 'no_shift' }
+      }
     }
 
-    const existingWaitlist = reservations.some(r =>
-      r.phone === phone &&
-      r.date === sanitized.date &&
-      r.timeSlot === sanitized.timeSlot &&
-      r.status === 'waitlisted'
-    )
+    const existingWaitlist = reservations.some(r => {
+      if (r.phone !== phone || r.date !== sanitized.date || r.status !== 'waitlisted') return false
+      const { startH, endH } = parseTimeRange(r.timeSlot)
+      return startH < wEnd && endH > wStart
+    })
     if (existingWaitlist) return { error: 'duplicate_waitlist' }
 
     const reservation = {
@@ -370,13 +400,13 @@ export function AppProvider({ children }) {
 
   const changeReservation = async (id, updatedData) => {
     const phone = updatedData.phone
-    const duplicate = reservations.some(r =>
-      r.id !== id &&
-      r.phone === phone &&
-      r.date === updatedData.date &&
-      r.timeSlot === updatedData.timeSlot &&
-      r.status !== 'cancelled'
-    )
+    const { startH: cStart, endH: cEnd } = parseTimeRange(updatedData.timeSlot)
+    const duplicate = reservations.some(r => {
+      if (r.id === id || r.phone !== phone || r.date !== updatedData.date) return false
+      if (r.status === 'cancelled' || r.status === 'waitlisted') return false
+      const { startH, endH } = parseTimeRange(r.timeSlot)
+      return startH < cEnd && endH > cStart
+    })
     if (duplicate) return { error: 'duplicate' }
     await updateDoc(doc(db, 'reservations', id), {
       date: updatedData.date,
@@ -409,7 +439,8 @@ export function AppProvider({ children }) {
       shifts, nurses, addNurse, deleteNurse,
       addShiftDate, removeShiftDate,
       addNurseToSlot, removeNurseFromSlot,
-      getAvailableDates, getAvailableSlots, getSlotNurses, getSlotCapacity,
+      getAvailableDates, getAvailableSlots, getAvailableStartTimes, getConsecutiveEndTimes,
+      getSlotNurses, getSlotCapacity,
       visitCounts, coupons, markCouponUsed, reissueCoupon,
       closedDates, addClosedDate, removeClosedDate,
       photoAlbums, createPhotoAlbum, addPhotoUrl, removePhotoUrl, deletePhotoAlbum,

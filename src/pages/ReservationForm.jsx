@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useApp, TIME_SLOTS } from '../context/AppContext'
+import { useApp } from '../context/AppContext'
 import Header from '../components/Header'
 import { sendConfirmationEmail } from '../lib/email'
 
@@ -19,24 +19,33 @@ function Field({ label, required, error, hint, children }) {
   )
 }
 
+const EMPTY_FORM = {
+  parentName: '', parentKana: '', lineName: '', phone: '', email: '',
+  childName: '', childKana: '', childBirthdate: '', relationship: '',
+  date: '', startTime: '', endTime: '', purpose: '', notes: '',
+}
+
 export default function ReservationForm() {
   const navigate = useNavigate()
-  const { termsAgreed, addReservation, addToWaitlist, getAvailableDates, getAvailableSlots, getSlotCapacity, visitCounts, coupons, shifts } = useApp()
+  const {
+    termsAgreed, addReservation, addToWaitlist,
+    getAvailableDates, getAvailableStartTimes, getConsecutiveEndTimes, getSlotCapacity,
+    visitCounts, coupons, shifts,
+  } = useApp()
 
   const [form, setForm] = useState(() => {
     try {
       const saved = sessionStorage.getItem('reservationForm')
-      return saved ? JSON.parse(saved) : {
-        parentName: '', parentKana: '', lineName: '', phone: '', email: '',
-        childName: '', childKana: '', childBirthdate: '', relationship: '',
-        date: '', timeSlot: '', purpose: '', notes: '',
+      if (!saved) return EMPTY_FORM
+      const parsed = JSON.parse(saved)
+      // 旧形式 (timeSlot) を startTime/endTime に変換
+      if (parsed.timeSlot && !parsed.startTime) {
+        const [s, e] = parsed.timeSlot.split('〜')
+        return { ...EMPTY_FORM, ...parsed, startTime: s || '', endTime: e || '' }
       }
+      return { ...EMPTY_FORM, ...parsed }
     } catch {
-      return {
-        parentName: '', parentKana: '', lineName: '', phone: '', email: '',
-        childName: '', childKana: '', childBirthdate: '', relationship: '',
-        date: '', timeSlot: '', purpose: '', notes: '',
-      }
+      return EMPTY_FORM
     }
   })
   const [errors, setErrors] = useState({})
@@ -50,19 +59,50 @@ export default function ReservationForm() {
   const availableDates = getAvailableDates()
   const shiftsConfigured = Object.keys(shifts).length > 0
   const hasShifts = availableDates.length > 0
-  const availableSlots = form.date ? getAvailableSlots(form.date) : []
-  const slotCapacity = hasShifts && form.date && form.timeSlot
-    ? getSlotCapacity(form.date, form.timeSlot)
-    : null
+
+  const startTimes = hasShifts && form.date ? getAvailableStartTimes(form.date) : []
+  const endTimes = hasShifts && form.date && form.startTime
+    ? getConsecutiveEndTimes(form.date, form.startTime)
+    : []
+
+  // 選択中の範囲で最も制限の厳しい（残席最小の）スロット容量を計算
+  const slotCapacity = (() => {
+    if (!hasShifts || !form.date || !form.startTime || !form.endTime) return null
+    const startH = parseInt(form.startTime)
+    const endH = parseInt(form.endTime)
+    let minAvailable = Infinity
+    let maxWaitlist = 0
+    let anyFull = false
+    let minMax = Infinity
+    for (let h = startH; h < endH; h++) {
+      const slot = `${String(h).padStart(2, '0')}:00〜${String(h + 1).padStart(2, '0')}:00`
+      const cap = getSlotCapacity(form.date, slot)
+      if (cap.available < minAvailable) minAvailable = cap.available
+      if (cap.maxCapacity < minMax) minMax = cap.maxCapacity
+      if (cap.waitlistCount > maxWaitlist) maxWaitlist = cap.waitlistCount
+      if (cap.isFull) anyFull = true
+    }
+    return {
+      available: minAvailable === Infinity ? 0 : minAvailable,
+      maxCapacity: minMax === Infinity ? 0 : minMax,
+      waitlistCount: maxWaitlist,
+      isFull: anyFull,
+    }
+  })()
 
   const set = (key) => (e) => {
     const val = e.target.value
-    setErrors(prev => ({ ...prev, [key]: '' }))
-    if (key === 'date' || key === 'timeSlot') setJoinWaitlist(false)
+    setErrors(prev => ({ ...prev, [key]: '', timeSlot: '' }))
+    if (key === 'date' || key === 'startTime' || key === 'endTime') setJoinWaitlist(false)
     setForm(prev => {
-      const next = key === 'date'
-        ? { ...prev, date: val, timeSlot: '' }
-        : { ...prev, [key]: val }
+      let next
+      if (key === 'date') {
+        next = { ...prev, date: val, startTime: '', endTime: '' }
+      } else if (key === 'startTime') {
+        next = { ...prev, startTime: val, endTime: '' }
+      } else {
+        next = { ...prev, [key]: val }
+      }
       sessionStorage.setItem('reservationForm', JSON.stringify(next))
       return next
     })
@@ -80,7 +120,7 @@ export default function ReservationForm() {
     if (!form.childBirthdate) e.childBirthdate = '生年月日を入力してください'
     if (!form.relationship) e.relationship = '続柄を選択してください'
     if (!form.date) e.date = '希望利用日を選択してください'
-    if (!form.timeSlot) e.timeSlot = '希望時間帯を選択してください'
+    if (!form.startTime || !form.endTime) e.timeSlot = '開始時刻と終了時刻を選択してください'
     if (!form.purpose) e.purpose = '利用目的を選択してください'
     return e
   }
@@ -90,10 +130,11 @@ export default function ReservationForm() {
     const e2 = validate()
     if (Object.keys(e2).length > 0) { setErrors(e2); return }
     setSubmitting(true)
+    const submittedData = { ...form, timeSlot: `${form.startTime}〜${form.endTime}` }
     try {
       const result = joinWaitlist
-        ? await addToWaitlist(form)
-        : await addReservation(form)
+        ? await addToWaitlist(submittedData)
+        : await addReservation(submittedData)
       if (result?.error === 'max_reservations') {
         setErrors({ submit: '同じ電話番号で予約できるのは3件までです。キャンセル後に再予約してください。' })
         setSubmitting(false)
@@ -105,7 +146,7 @@ export default function ReservationForm() {
         return
       }
       if (result?.error === 'no_shift') {
-        setErrors({ submit: '選択した日時にはシフトが設定されていません。別の日時をお選びください。' })
+        setErrors({ submit: '選択した時間帯の一部にシフトが設定されていません。別の時間帯をお選びください。' })
         setSubmitting(false)
         return
       }
@@ -271,74 +312,94 @@ export default function ReservationForm() {
               <span className="form-section-title">予約情報</span>
             </div>
             <div className="form-section-body">
-              <div className="form-grid-2">
-                <Field label="希望利用日" required error={errors.date}>
-                  {hasShifts ? (
-                    <select className={`form-select${errors.date ? ' err' : ''}`}
-                      value={form.date} onChange={set('date')}>
-                      <option value="">日付を選択</option>
-                      {availableDates.map(d => (
-                        <option key={d} value={d}>{formatDate(d)}</option>
-                      ))}
-                    </select>
-                  ) : shiftsConfigured ? (
-                    <div style={{ padding: '10px 14px', background: 'var(--amber50)', border: '1px solid var(--amber400)', borderRadius: 'var(--r-md)', fontSize: '.875rem', color: '#92400E' }}>
-                      ⚠️ 現在予約可能な日程がありません。しばらくお待ちいただくか、園へお問い合わせください。
-                    </div>
-                  ) : (
-                    <div style={{ padding: '10px 14px', background: 'var(--amber50)', border: '1px solid var(--amber400)', borderRadius: 'var(--r-md)', fontSize: '.875rem', color: '#92400E' }}>
-                      ⚠️ 現在シフトが設定されていません。しばらくお待ちください。
-                    </div>
-                  )}
-                </Field>
-                <Field label="希望時間帯" required error={errors.timeSlot}>
-                  <select className={`form-select${errors.timeSlot ? ' err' : ''}`}
-                    value={form.timeSlot} onChange={set('timeSlot')} disabled={!form.date || !hasShifts}>
-                    <option value="">時間帯を選択</option>
-                    {availableSlots.map(s => {
-                      if (hasShifts && form.date) {
-                        const cap = getSlotCapacity(form.date, s)
-                        const suffix = cap.isFull
-                          ? ` ── 満席（待ち${cap.waitlistCount}人）`
-                          : ` ── 残り${cap.available}席`
-                        return <option key={s} value={s}>{s}{suffix}</option>
-                      }
-                      return <option key={s} value={s}>{s}</option>
-                    })}
+              {/* 希望利用日 */}
+              <Field label="希望利用日" required error={errors.date}>
+                {hasShifts ? (
+                  <select className={`form-select${errors.date ? ' err' : ''}`}
+                    value={form.date} onChange={set('date')}>
+                    <option value="">日付を選択</option>
+                    {availableDates.map(d => (
+                      <option key={d} value={d}>{formatDate(d)}</option>
+                    ))}
                   </select>
-                  {slotCapacity && !slotCapacity.isFull && (
-                    <p style={{ fontSize: '.8125rem', color: 'var(--green700)', marginTop: '4px', fontWeight: 600 }}>
-                      ✓ 空きあり（残り{slotCapacity.available}席 / 定員{slotCapacity.maxCapacity}名）
+                ) : shiftsConfigured ? (
+                  <div style={{ padding: '10px 14px', background: 'var(--amber50)', border: '1px solid var(--amber400)', borderRadius: 'var(--r-md)', fontSize: '.875rem', color: '#92400E' }}>
+                    ⚠️ 現在予約可能な日程がありません。しばらくお待ちいただくか、園へお問い合わせください。
+                  </div>
+                ) : (
+                  <div style={{ padding: '10px 14px', background: 'var(--amber50)', border: '1px solid var(--amber400)', borderRadius: 'var(--r-md)', fontSize: '.875rem', color: '#92400E' }}>
+                    ⚠️ 現在シフトが設定されていません。しばらくお待ちください。
+                  </div>
+                )}
+              </Field>
+
+              {/* 時間帯：開始 + 終了 */}
+              <Field label="希望時間帯" required error={errors.timeSlot}>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <select
+                    className={`form-select${errors.timeSlot ? ' err' : ''}`}
+                    value={form.startTime}
+                    onChange={set('startTime')}
+                    disabled={!form.date || !hasShifts}
+                    style={{ flex: 1 }}
+                  >
+                    <option value="">開始時刻</option>
+                    {startTimes.map(t => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                  <span style={{ color: 'var(--g500)', fontWeight: 600, whiteSpace: 'nowrap' }}>〜</span>
+                  <select
+                    className={`form-select${errors.timeSlot ? ' err' : ''}`}
+                    value={form.endTime}
+                    onChange={set('endTime')}
+                    disabled={!form.startTime}
+                    style={{ flex: 1 }}
+                  >
+                    <option value="">終了時刻</option>
+                    {endTimes.map(t => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                </div>
+                {form.startTime && form.endTime && (
+                  <p style={{ fontSize: '.8125rem', color: 'var(--g500)', marginTop: '4px' }}>
+                    預け時間：{parseInt(form.endTime) - parseInt(form.startTime)}時間
+                  </p>
+                )}
+                {slotCapacity && !slotCapacity.isFull && (
+                  <p style={{ fontSize: '.8125rem', color: 'var(--green700)', marginTop: '4px', fontWeight: 600 }}>
+                    ✓ 空きあり（残り{slotCapacity.available}席）
+                  </p>
+                )}
+                {slotCapacity?.isFull && (
+                  <div style={{ marginTop: '10px', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 'var(--r-md)', padding: '12px 14px' }}>
+                    <p style={{ fontWeight: 700, color: '#DC2626', marginBottom: '6px' }}>
+                      ⛔ この時間帯は満席です
                     </p>
-                  )}
-                  {slotCapacity?.isFull && (
-                    <div style={{ marginTop: '10px', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 'var(--r-md)', padding: '12px 14px' }}>
-                      <p style={{ fontWeight: 700, color: '#DC2626', marginBottom: '6px' }}>
-                        ⛔ この時間帯は満席です（定員{slotCapacity.maxCapacity}名）
-                      </p>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '.9rem', color: '#7C2D12' }}>
-                        <input
-                          type="checkbox"
-                          checked={joinWaitlist}
-                          onChange={e => setJoinWaitlist(e.target.checked)}
-                          style={{ width: '16px', height: '16px', accentColor: '#DC2626' }}
-                        />
-                        キャンセル待ちに登録する
-                        {slotCapacity.waitlistCount > 0 && (
-                          <span style={{ fontSize: '.8125rem', color: '#9A3412' }}>
-                            （現在{slotCapacity.waitlistCount}番待ち）
-                          </span>
-                        )}
-                      </label>
-                      {joinWaitlist && (
-                        <p style={{ marginTop: '8px', fontSize: '.8125rem', color: '#9A3412' }}>
-                          ⚡ キャンセルが出た場合、登録順にご連絡いたします。確定までは予約ではありませんのでご注意ください。
-                        </p>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '.9rem', color: '#7C2D12' }}>
+                      <input
+                        type="checkbox"
+                        checked={joinWaitlist}
+                        onChange={e => setJoinWaitlist(e.target.checked)}
+                        style={{ width: '16px', height: '16px', accentColor: '#DC2626' }}
+                      />
+                      キャンセル待ちに登録する
+                      {slotCapacity.waitlistCount > 0 && (
+                        <span style={{ fontSize: '.8125rem', color: '#9A3412' }}>
+                          （現在{slotCapacity.waitlistCount}番待ち）
+                        </span>
                       )}
-                    </div>
-                  )}
-                </Field>
-              </div>
+                    </label>
+                    {joinWaitlist && (
+                      <p style={{ marginTop: '8px', fontSize: '.8125rem', color: '#9A3412' }}>
+                        ⚡ キャンセルが出た場合、登録順にご連絡いたします。
+                      </p>
+                    )}
+                  </div>
+                )}
+              </Field>
+
               <Field label="利用目的" required error={errors.purpose}>
                 <select className={`form-select${errors.purpose ? ' err' : ''}`}
                   value={form.purpose} onChange={set('purpose')}>

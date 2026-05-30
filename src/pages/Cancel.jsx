@@ -16,7 +16,7 @@ export default function Cancel() {
   const navigate = useNavigate()
   const {
     reservations, updateStatus, changeReservation,
-    getAvailableDates, getAvailableSlots,
+    getAvailableDates, getAvailableStartTimes, getConsecutiveEndTimes,
   } = useApp()
 
   const [phone, setPhone] = useState('')
@@ -24,7 +24,7 @@ export default function Cancel() {
   const [cancelledId, setCancelledId] = useState(null)
   const [confirming, setConfirming] = useState(null)
   const [changing, setChanging] = useState(null)
-  const [changeForm, setChangeForm] = useState({ date: '', timeSlot: '' })
+  const [changeForm, setChangeForm] = useState({ date: '', startTime: '', endTime: '' })
   const [changeError, setChangeError] = useState('')
   const [changedId, setChangedId] = useState(null)
   // 2段階確認
@@ -51,7 +51,10 @@ export default function Cancel() {
   const foundReservations = nameVerified ? matchedReservations : []
 
   const availableDates = getAvailableDates()
-  const changeSlots = changeForm.date ? getAvailableSlots(changeForm.date) : []
+  const changeStartTimes = changeForm.date ? getAvailableStartTimes(changeForm.date) : []
+  const changeEndTimes = changeForm.date && changeForm.startTime
+    ? getConsecutiveEndTimes(changeForm.date, changeForm.startTime)
+    : []
 
   const handleSearch = (e) => {
     e.preventDefault()
@@ -90,18 +93,20 @@ export default function Cancel() {
   }
 
   const startChanging = (r) => {
+    const parts = r.timeSlot ? r.timeSlot.split('〜') : ['', '']
     setChanging(r.id)
-    setChangeForm({ date: r.date, timeSlot: r.timeSlot })
+    setChangeForm({ date: r.date, startTime: parts[0] || '', endTime: parts[1] || '' })
     setChangeError('')
     setConfirming(null)
   }
 
   const handleChange = async (r) => {
-    if (!changeForm.date || !changeForm.timeSlot) {
-      setChangeError('日付と時間帯を選択してください')
+    if (!changeForm.date || !changeForm.startTime || !changeForm.endTime) {
+      setChangeError('日付・開始時刻・終了時刻を選択してください')
       return
     }
-    const result = await changeReservation(r.id, { ...r, date: changeForm.date, timeSlot: changeForm.timeSlot })
+    const timeSlot = `${changeForm.startTime}〜${changeForm.endTime}`
+    const result = await changeReservation(r.id, { ...r, date: changeForm.date, timeSlot })
     if (result?.error === 'duplicate') {
       setChangeError('選択した日時・時間帯にはすでに予約があります。別の日時をお選びください。')
       return
@@ -146,24 +151,45 @@ export default function Cancel() {
             <select
               className="form-select"
               value={changeForm.date}
-              onChange={e => setChangeForm({ date: e.target.value, timeSlot: '' })}
+              onChange={e => setChangeForm({ date: e.target.value, startTime: '', endTime: '' })}
             >
               <option value="">日付を選択</option>
               {availableDates.map(d => (
                 <option key={d} value={d}>{formatDate(d)}</option>
               ))}
             </select>
-            <select
-              className="form-select"
-              value={changeForm.timeSlot}
-              onChange={e => setChangeForm(p => ({ ...p, timeSlot: e.target.value }))}
-              disabled={!changeForm.date}
-            >
-              <option value="">時間帯を選択</option>
-              {changeSlots.map(s => (
-                <option key={s} value={s}>{s}</option>
-              ))}
-            </select>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <select
+                className="form-select"
+                value={changeForm.startTime}
+                onChange={e => setChangeForm(p => ({ ...p, startTime: e.target.value, endTime: '' }))}
+                disabled={!changeForm.date}
+                style={{ flex: 1 }}
+              >
+                <option value="">開始時刻</option>
+                {changeStartTimes.map(t => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
+              <span style={{ color: 'var(--g500)', fontWeight: 600 }}>〜</span>
+              <select
+                className="form-select"
+                value={changeForm.endTime}
+                onChange={e => setChangeForm(p => ({ ...p, endTime: e.target.value }))}
+                disabled={!changeForm.startTime}
+                style={{ flex: 1 }}
+              >
+                <option value="">終了時刻</option>
+                {changeEndTimes.map(t => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
+            </div>
+            {changeForm.startTime && changeForm.endTime && (
+              <p style={{ fontSize: '.8125rem', color: 'var(--g500)' }}>
+                預け時間：{parseInt(changeForm.endTime) - parseInt(changeForm.startTime)}時間
+              </p>
+            )}
           </div>
           {changeError && (
             <p style={{ color: '#DC2626', fontSize: '.8125rem', marginTop: '6px' }}>{changeError}</p>
