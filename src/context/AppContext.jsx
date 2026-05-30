@@ -246,6 +246,13 @@ export function AppProvider({ children }) {
     )
     if (duplicate) return { error: 'duplicate' }
 
+    // シフト確認（保育士が配置されているスロットのみ予約可）
+    if (Object.keys(shifts).length > 0) {
+      const assignments = shifts[sanitized.date]?.assignments || {}
+      const slotNurses = assignments[sanitized.timeSlot] || []
+      if (slotNurses.length === 0) return { error: 'no_shift' }
+    }
+
     // 定員チェック（保育士1名：園児5人まで）
     const capacity = getSlotCapacity(sanitized.date, sanitized.timeSlot)
     if (capacity.isFull) return { error: 'full' }
@@ -303,6 +310,13 @@ export function AppProvider({ children }) {
       notes: sanitize(formData.notes, 500),
     }
     const phone = sanitized.phone
+
+    // シフト確認
+    if (Object.keys(shifts).length > 0) {
+      const assignments = shifts[sanitized.date]?.assignments || {}
+      const slotNurses = assignments[sanitized.timeSlot] || []
+      if (slotNurses.length === 0) return { error: 'no_shift' }
+    }
 
     const existingWaitlist = reservations.some(r =>
       r.phone === phone &&

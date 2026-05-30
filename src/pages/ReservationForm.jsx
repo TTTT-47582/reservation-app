@@ -21,7 +21,7 @@ function Field({ label, required, error, hint, children }) {
 
 export default function ReservationForm() {
   const navigate = useNavigate()
-  const { termsAgreed, addReservation, addToWaitlist, getAvailableDates, getAvailableSlots, getSlotCapacity, visitCounts, coupons } = useApp()
+  const { termsAgreed, addReservation, addToWaitlist, getAvailableDates, getAvailableSlots, getSlotCapacity, visitCounts, coupons, shifts } = useApp()
 
   const [form, setForm] = useState(() => {
     try {
@@ -48,18 +48,12 @@ export default function ReservationForm() {
   }, [termsAgreed, navigate])
 
   const availableDates = getAvailableDates()
+  const shiftsConfigured = Object.keys(shifts).length > 0
   const hasShifts = availableDates.length > 0
   const availableSlots = form.date ? getAvailableSlots(form.date) : []
   const slotCapacity = hasShifts && form.date && form.timeSlot
     ? getSlotCapacity(form.date, form.timeSlot)
     : null
-
-  // シフト未登録時のフォールバック：3日後以降を選択可能
-  const minDate = (() => {
-    const d = new Date()
-    d.setDate(d.getDate() + 3)
-    return d.toISOString().split('T')[0]
-  })()
 
   const set = (key) => (e) => {
     const val = e.target.value
@@ -107,6 +101,11 @@ export default function ReservationForm() {
       }
       if (result?.error === 'duplicate' || result?.error === 'duplicate_waitlist') {
         setErrors({ submit: '同じ日時・時間帯の予約が既にあります。別の日時をお選びください。' })
+        setSubmitting(false)
+        return
+      }
+      if (result?.error === 'no_shift') {
+        setErrors({ submit: '選択した日時にはシフトが設定されていません。別の日時をお選びください。' })
         setSubmitting(false)
         return
       }
@@ -273,8 +272,7 @@ export default function ReservationForm() {
             </div>
             <div className="form-section-body">
               <div className="form-grid-2">
-                <Field label="希望利用日" required error={errors.date}
-                  hint={!hasShifts ? '※管理者がシフトを設定すると選択可能日が絞り込まれます' : undefined}>
+                <Field label="希望利用日" required error={errors.date}>
                   {hasShifts ? (
                     <select className={`form-select${errors.date ? ' err' : ''}`}
                       value={form.date} onChange={set('date')}>
@@ -283,17 +281,21 @@ export default function ReservationForm() {
                         <option key={d} value={d}>{formatDate(d)}</option>
                       ))}
                     </select>
+                  ) : shiftsConfigured ? (
+                    <div style={{ padding: '10px 14px', background: 'var(--amber50)', border: '1px solid var(--amber400)', borderRadius: 'var(--r-md)', fontSize: '.875rem', color: '#92400E' }}>
+                      ⚠️ 現在予約可能な日程がありません。しばらくお待ちいただくか、園へお問い合わせください。
+                    </div>
                   ) : (
-                    <input className={`form-input${errors.date ? ' err' : ''}`}
-                      type="date" value={form.date} min={minDate}
-                      onChange={set('date')} />
+                    <div style={{ padding: '10px 14px', background: 'var(--amber50)', border: '1px solid var(--amber400)', borderRadius: 'var(--r-md)', fontSize: '.875rem', color: '#92400E' }}>
+                      ⚠️ 現在シフトが設定されていません。しばらくお待ちください。
+                    </div>
                   )}
                 </Field>
                 <Field label="希望時間帯" required error={errors.timeSlot}>
                   <select className={`form-select${errors.timeSlot ? ' err' : ''}`}
-                    value={form.timeSlot} onChange={set('timeSlot')} disabled={!form.date}>
+                    value={form.timeSlot} onChange={set('timeSlot')} disabled={!form.date || !hasShifts}>
                     <option value="">時間帯を選択</option>
-                    {(hasShifts ? availableSlots : TIME_SLOTS).map(s => {
+                    {availableSlots.map(s => {
                       if (hasShifts && form.date) {
                         const cap = getSlotCapacity(form.date, s)
                         const suffix = cap.isFull
@@ -361,7 +363,7 @@ export default function ReservationForm() {
             <button type="button" className="btn btn-secondary" onClick={() => navigate('/')}>
               キャンセル
             </button>
-            <button type="submit" className="btn btn-primary" disabled={submitting}
+            <button type="submit" className="btn btn-primary" disabled={submitting || !hasShifts}
               style={joinWaitlist ? { background: '#9A3412', borderColor: '#9A3412' } : {}}>
               {submitting
                 ? '送信中…'
