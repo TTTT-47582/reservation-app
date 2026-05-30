@@ -185,6 +185,30 @@ export function AppProvider({ children }) {
     return ids.map(id => nurses.find(n => n.id === id)).filter(Boolean)
   }
 
+  const getSlotCapacity = (date, slot) => {
+    const nurseCount = getSlotNurses(date, slot).length
+    const maxCapacity = nurseCount * 5
+    const active = reservations.filter(r =>
+      r.date === date &&
+      r.timeSlot === slot &&
+      r.status !== 'cancelled' &&
+      r.status !== 'waitlisted'
+    )
+    const waitlisted = reservations.filter(r =>
+      r.date === date &&
+      r.timeSlot === slot &&
+      r.status === 'waitlisted'
+    )
+    return {
+      nurseCount,
+      maxCapacity,
+      current: active.length,
+      available: nurseCount > 0 ? Math.max(0, maxCapacity - active.length) : 0,
+      waitlistCount: waitlisted.length,
+      isFull: nurseCount > 0 && active.length >= maxCapacity,
+    }
+  }
+
   // ===== 予約 =====
   const sanitize = (v, maxLen = 100) =>
     typeof v === 'string' ? v.trim().slice(0, maxLen) : v
@@ -202,8 +226,8 @@ export function AppProvider({ children }) {
     }
     const phone = sanitized.phone
 
-    // 同一電話番号の有効予約が3件以上なら拒否
-    const active = reservations.filter(r => r.phone === phone && r.status !== 'cancelled')
+    // 同一電話番号の有効予約が3件以上なら拒否（キャンセル待ちは除く）
+    const active = reservations.filter(r => r.phone === phone && r.status !== 'cancelled' && r.status !== 'waitlisted')
     if (active.length >= 3) return { error: 'max_reservations' }
 
     // 同一電話番号・同一日付・同一時間帯の重複を拒否
@@ -211,9 +235,14 @@ export function AppProvider({ children }) {
       r.phone === phone &&
       r.date === sanitized.date &&
       r.timeSlot === sanitized.timeSlot &&
-      r.status !== 'cancelled'
+      r.status !== 'cancelled' &&
+      r.status !== 'waitlisted'
     )
     if (duplicate) return { error: 'duplicate' }
+
+    // 定員チェック（保育士1名：園児5人まで）
+    const capacity = getSlotCapacity(sanitized.date, sanitized.timeSlot)
+    if (capacity.isFull) return { error: 'full' }
 
     const visitRef = doc(db, 'visitCounts', phone)
     const visitSnap = await getDoc(visitRef)
@@ -257,8 +286,67 @@ export function AppProvider({ children }) {
     return result
   }
 
-  const updateStatus = (id, status) =>
-    updateDoc(doc(db, 'reservations', id), { status })
+  const addToWaitlist = async (formData) => {
+    const sanitized = {
+      ...formData,
+      parentName: sanitize(formData.parentName, 50),
+      childName: sanitize(formData.childName, 50),
+      childKana: sanitize(formData.childKana, 50),
+      phone: sanitize(formData.phone, 20),
+      purpose: sanitize(formData.purpose, 200),
+      notes: sanitize(formData.notes, 500),
+    }
+    const phone = sanitized.phone
+
+    const existingWaitlist = reservations.some(r =>
+      r.phone === phone &&
+      r.date === sanitized.date &&
+      r.timeSlot === sanitized.timeSlot &&
+      r.status === 'waitlisted'
+    )
+    if (existingWaitlist) return { error: 'duplicate_waitlist' }
+
+    const reservation = {
+      ...sanitized,
+      createdAt: serverTimestamp(),
+      status: 'waitlisted',
+      visitCount: visitCounts[phone] || 0,
+      couponCode: null,
+      couponInfo: null,
+      couponApplied: false,
+    }
+    const ref = await addDoc(collection(db, 'reservations'), reservation)
+    const result = { ...reservation, id: ref.id, createdAt: new Date().toISOString() }
+    setLastReservation(result)
+    return result
+  }
+
+  const updateStatus = async (id, status) => {
+    await updateDoc(doc(db, 'reservations', id), { status })
+    if (status === 'cancelled') {
+      const cancelled = reservations.find(r => r.id === id)
+      if (cancelled) {
+        const waitlist = reservations
+          .filter(r =>
+            r.date === cancelled.date &&
+            r.timeSlot === cancelled.timeSlot &&
+            r.status === 'waitlisted'
+          )
+          .sort((a, b) => {
+            const ta = a.createdAt?.toMillis ? a.createdAt.toMillis() : new Date(a.createdAt || 0).getTime()
+            const tb = b.createdAt?.toMillis ? b.createdAt.toMillis() : new Date(b.createdAt || 0).getTime()
+            return ta - tb
+          })
+        if (waitlist.length > 0) {
+          await updateDoc(doc(db, 'reservations', waitlist[0].id), {
+            status: 'pending',
+            promotedFromWaitlist: true,
+            promotedAt: serverTimestamp(),
+          })
+        }
+      }
+    }
+  }
 
   const changeReservation = async (id, updatedData) => {
     const phone = updatedData.phone
@@ -297,11 +385,11 @@ export function AppProvider({ children }) {
   return (
     <AppContext.Provider value={{
       termsAgreed, setTermsAgreed,
-      reservations, addReservation, updateStatus, changeReservation, deleteReservation,
+      reservations, addReservation, addToWaitlist, updateStatus, changeReservation, deleteReservation,
       shifts, nurses, addNurse, deleteNurse,
       addShiftDate, removeShiftDate,
       addNurseToSlot, removeNurseFromSlot,
-      getAvailableDates, getAvailableSlots, getSlotNurses,
+      getAvailableDates, getAvailableSlots, getSlotNurses, getSlotCapacity,
       visitCounts, coupons, markCouponUsed, reissueCoupon,
       closedDates, addClosedDate, removeClosedDate,
       photoAlbums, createPhotoAlbum, addPhotoUrl, removePhotoUrl, deletePhotoAlbum,

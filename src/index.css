@@ -116,6 +116,7 @@ img { max-width: 100%; }
 .badge-gray { background: var(--g100); color: var(--g500); }
 .badge-amber { background: var(--amber50); color: var(--amber600); }
 .badge-yellow { background: var(--yellow50); color: #854D0E; }
+.badge-purple { background: #F5F3FF; color: #6D28D9; }
 .badge-red { background: var(--red50); color: var(--red500); }
 
 /* ========== HOME ========== */

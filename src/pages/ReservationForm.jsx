@@ -21,7 +21,7 @@ function Field({ label, required, error, hint, children }) {
 
 export default function ReservationForm() {
   const navigate = useNavigate()
-  const { termsAgreed, addReservation, getAvailableDates, getAvailableSlots, visitCounts, coupons } = useApp()
+  const { termsAgreed, addReservation, addToWaitlist, getAvailableDates, getAvailableSlots, getSlotCapacity, visitCounts, coupons } = useApp()
 
   const [form, setForm] = useState(() => {
     try {
@@ -41,6 +41,7 @@ export default function ReservationForm() {
   })
   const [errors, setErrors] = useState({})
   const [submitting, setSubmitting] = useState(false)
+  const [joinWaitlist, setJoinWaitlist] = useState(false)
 
   useEffect(() => {
     if (!termsAgreed) navigate('/terms')
@@ -49,6 +50,9 @@ export default function ReservationForm() {
   const availableDates = getAvailableDates()
   const hasShifts = availableDates.length > 0
   const availableSlots = form.date ? getAvailableSlots(form.date) : []
+  const slotCapacity = hasShifts && form.date && form.timeSlot
+    ? getSlotCapacity(form.date, form.timeSlot)
+    : null
 
   // シフト未登録時のフォールバック：3日後以降を選択可能
   const minDate = (() => {
@@ -60,6 +64,7 @@ export default function ReservationForm() {
   const set = (key) => (e) => {
     const val = e.target.value
     setErrors(prev => ({ ...prev, [key]: '' }))
+    if (key === 'date' || key === 'timeSlot') setJoinWaitlist(false)
     setForm(prev => {
       const next = key === 'date'
         ? { ...prev, date: val, timeSlot: '' }
@@ -92,18 +97,25 @@ export default function ReservationForm() {
     if (Object.keys(e2).length > 0) { setErrors(e2); return }
     setSubmitting(true)
     try {
-      const result = await addReservation(form)
+      const result = joinWaitlist
+        ? await addToWaitlist(form)
+        : await addReservation(form)
       if (result?.error === 'max_reservations') {
         setErrors({ submit: '同じ電話番号で予約できるのは3件までです。キャンセル後に再予約してください。' })
         setSubmitting(false)
         return
       }
-      if (result?.error === 'duplicate') {
+      if (result?.error === 'duplicate' || result?.error === 'duplicate_waitlist') {
         setErrors({ submit: '同じ日時・時間帯の予約が既にあります。別の日時をお選びください。' })
         setSubmitting(false)
         return
       }
-      await sendConfirmationEmail(result).catch(() => {})
+      if (result?.error === 'full') {
+        setErrors({ submit: 'この時間帯は満席です。キャンセル待ちを希望される場合は「キャンセル待ちに登録する」にチェックしてください。' })
+        setSubmitting(false)
+        return
+      }
+      if (!joinWaitlist) await sendConfirmationEmail(result).catch(() => {})
       sessionStorage.removeItem('reservationForm')
       navigate('/confirmation')
     } catch {
@@ -281,10 +293,48 @@ export default function ReservationForm() {
                   <select className={`form-select${errors.timeSlot ? ' err' : ''}`}
                     value={form.timeSlot} onChange={set('timeSlot')} disabled={!form.date}>
                     <option value="">時間帯を選択</option>
-                    {(hasShifts ? availableSlots : TIME_SLOTS).map(s => (
-                      <option key={s} value={s}>{s}</option>
-                    ))}
+                    {(hasShifts ? availableSlots : TIME_SLOTS).map(s => {
+                      if (hasShifts && form.date) {
+                        const cap = getSlotCapacity(form.date, s)
+                        const suffix = cap.isFull
+                          ? ` ── 満席（待ち${cap.waitlistCount}人）`
+                          : ` ── 残り${cap.available}席`
+                        return <option key={s} value={s}>{s}{suffix}</option>
+                      }
+                      return <option key={s} value={s}>{s}</option>
+                    })}
                   </select>
+                  {slotCapacity && !slotCapacity.isFull && (
+                    <p style={{ fontSize: '.8125rem', color: 'var(--green700)', marginTop: '4px', fontWeight: 600 }}>
+                      ✓ 空きあり（残り{slotCapacity.available}席 / 定員{slotCapacity.maxCapacity}名）
+                    </p>
+                  )}
+                  {slotCapacity?.isFull && (
+                    <div style={{ marginTop: '10px', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 'var(--r-md)', padding: '12px 14px' }}>
+                      <p style={{ fontWeight: 700, color: '#DC2626', marginBottom: '6px' }}>
+                        ⛔ この時間帯は満席です（定員{slotCapacity.maxCapacity}名）
+                      </p>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '.9rem', color: '#7C2D12' }}>
+                        <input
+                          type="checkbox"
+                          checked={joinWaitlist}
+                          onChange={e => setJoinWaitlist(e.target.checked)}
+                          style={{ width: '16px', height: '16px', accentColor: '#DC2626' }}
+                        />
+                        キャンセル待ちに登録する
+                        {slotCapacity.waitlistCount > 0 && (
+                          <span style={{ fontSize: '.8125rem', color: '#9A3412' }}>
+                            （現在{slotCapacity.waitlistCount}番待ち）
+                          </span>
+                        )}
+                      </label>
+                      {joinWaitlist && (
+                        <p style={{ marginTop: '8px', fontSize: '.8125rem', color: '#9A3412' }}>
+                          ⚡ キャンセルが出た場合、登録順にご連絡いたします。確定までは予約ではありませんのでご注意ください。
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </Field>
               </div>
               <Field label="利用目的" required error={errors.purpose}>
@@ -311,8 +361,13 @@ export default function ReservationForm() {
             <button type="button" className="btn btn-secondary" onClick={() => navigate('/')}>
               キャンセル
             </button>
-            <button type="submit" className="btn btn-primary" disabled={submitting}>
-              {submitting ? '送信中…' : '予約を送信する →'}
+            <button type="submit" className="btn btn-primary" disabled={submitting}
+              style={joinWaitlist ? { background: '#9A3412', borderColor: '#9A3412' } : {}}>
+              {submitting
+                ? '送信中…'
+                : joinWaitlist
+                  ? 'キャンセル待ちに登録する →'
+                  : '予約を送信する →'}
             </button>
           </div>
         </form>

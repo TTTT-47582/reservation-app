@@ -108,7 +108,7 @@ export default function Cancel() {
     setChanging(null)
   }
 
-  const canModify = (r) => r.status === 'pending' || r.status === 'confirmed'
+  const canModify = (r) => r.status === 'pending' || r.status === 'confirmed' || r.status === 'waitlisted'
 
   const ReservationCard = ({ r }) => (
     <div className="cancel-card">
@@ -121,9 +121,15 @@ export default function Cancel() {
           <span>🎯 {r.purpose}</span>
         </div>
         <div style={{ marginTop: '6px' }}>
-          <span className={`badge ${r.status === 'confirmed' ? 'badge-green' : 'badge-amber'}`}>
-            {r.status === 'confirmed' ? '確定済み' : '確認中'}
-          </span>
+          {r.status === 'confirmed' && <span className="badge badge-green">確定済み</span>}
+          {r.status === 'pending' && <span className="badge badge-amber">確認中</span>}
+          {r.status === 'waitlisted' && (() => {
+            const pos = reservations
+              .filter(x => x.date === r.date && x.timeSlot === r.timeSlot && x.status === 'waitlisted')
+              .sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0))
+              .findIndex(x => x.id === r.id)
+            return <span className="badge badge-purple">⏳ キャンセル待ち{pos >= 0 ? `（${pos + 1}番）` : ''}</span>
+          })()}
         </div>
       </div>
 
@@ -187,11 +193,13 @@ export default function Cancel() {
           </div>
         ) : (
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '8px' }}>
-            <button className="btn btn-primary btn-sm" onClick={() => startChanging(r)}>
-              変更する
-            </button>
+            {r.status !== 'waitlisted' && (
+              <button className="btn btn-primary btn-sm" onClick={() => startChanging(r)}>
+                変更する
+              </button>
+            )}
             <button className="btn btn-danger btn-sm" onClick={() => setConfirming(r.id)}>
-              キャンセル
+              {r.status === 'waitlisted' ? '待ちをキャンセル' : 'キャンセル'}
             </button>
           </div>
         )

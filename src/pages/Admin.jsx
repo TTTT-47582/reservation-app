@@ -6,8 +6,8 @@ import { ref as sRef, uploadBytes, getDownloadURL } from 'firebase/storage'
 import { useApp, TIME_SLOTS, NURSE_COLORS } from '../context/AppContext'
 import { sendConfirmedEmail, sendCouponEmail } from '../lib/email'
 
-const STATUS_LABEL = { pending: '未確認', confirmed: '確定', cancelled: 'キャンセル' }
-const STATUS_BADGE = { pending: 'badge-amber', confirmed: 'badge-green', cancelled: 'badge-gray' }
+const STATUS_LABEL = { pending: '未確認', confirmed: '確定', cancelled: 'キャンセル', waitlisted: 'キャンセル待ち' }
+const STATUS_BADGE = { pending: 'badge-amber', confirmed: 'badge-green', cancelled: 'badge-gray', waitlisted: 'badge-purple' }
 
 function formatDate(d) {
   if (!d) return ''
@@ -28,7 +28,7 @@ export default function Admin() {
     reservations, updateStatus, deleteReservation,
     shifts, nurses, addNurse, deleteNurse,
     addShiftDate, removeShiftDate, addNurseToSlot, removeNurseFromSlot,
-    getAvailableDates, getAvailableSlots, getSlotNurses,
+    getAvailableDates, getAvailableSlots, getSlotNurses, getSlotCapacity,
     visitCounts, coupons, markCouponUsed, reissueCoupon,
     closedDates, addClosedDate, removeClosedDate,
     photoAlbums, createPhotoAlbum, addPhotoUrl, removePhotoUrl, deletePhotoAlbum,
@@ -59,16 +59,17 @@ export default function Admin() {
   if (!user) return null
 
   const filtered = reservations.filter(r =>
-    filter === 'all' ? true :
+    filter === 'all' ? r.status !== 'waitlisted' :
     filter === 'coupon' ? r.couponInfo !== null :
     r.status === filter
   )
 
   // 累計統計
   const stats = {
-    total: reservations.length,
+    total: reservations.filter(r => r.status !== 'waitlisted').length,
     pending: reservations.filter(r => r.status === 'pending').length,
     confirmed: reservations.filter(r => r.status === 'confirmed').length,
+    waitlisted: reservations.filter(r => r.status === 'waitlisted').length,
     coupon: Object.keys(coupons).length,
   }
 
@@ -201,9 +202,16 @@ export default function Admin() {
               </div>
 
               <div className="filter-bar">
-                {[['all', '全て'], ['pending', '未確認'], ['confirmed', '確定'], ['cancelled', 'キャンセル'], ['coupon', 'クーポンあり']].map(([v, l]) => (
+                {[
+                  ['all', '予約一覧', stats.total],
+                  ['pending', '未確認', stats.pending],
+                  ['confirmed', '確定', stats.confirmed],
+                  ['waitlisted', '⏳ 待ち', stats.waitlisted],
+                  ['cancelled', 'キャンセル', null],
+                  ['coupon', 'クーポンあり', null],
+                ].map(([v, l, count]) => (
                   <button key={v} className={`filter-btn${filter === v ? ' active' : ''}`} onClick={() => setFilter(v)}>
-                    {l} {v === 'all' ? `(${stats.total})` : v === 'pending' ? `(${stats.pending})` : v === 'confirmed' ? `(${stats.confirmed})` : ''}
+                    {l}{count != null ? ` (${count})` : ''}
                   </button>
                 ))}
               </div>
@@ -220,7 +228,19 @@ export default function Admin() {
                     <div className="res-body">
                       <div className="res-name">
                         {r.parentName}
-                        <span className={`badge ${STATUS_BADGE[r.status]}`}>{STATUS_LABEL[r.status]}</span>
+                        <span className={`badge ${STATUS_BADGE[r.status] || 'badge-gray'}`}>{STATUS_LABEL[r.status] || r.status}</span>
+                        {r.status === 'waitlisted' && (() => {
+                          const pos = reservations
+                            .filter(x => x.date === r.date && x.timeSlot === r.timeSlot && x.status === 'waitlisted')
+                            .sort((a, b) => {
+                              const ta = a.createdAt?.toMillis ? a.createdAt.toMillis() : new Date(a.createdAt || 0).getTime()
+                              const tb = b.createdAt?.toMillis ? b.createdAt.toMillis() : new Date(b.createdAt || 0).getTime()
+                              return ta - tb
+                            })
+                            .findIndex(x => x.id === r.id)
+                          return pos >= 0 ? <span className="badge badge-purple">{pos + 1}番待ち</span> : null
+                        })()}
+                        {r.promotedFromWaitlist && <span className="badge badge-blue">⬆️ 繰り上げ</span>}
                         {r.couponCode && <span className="badge badge-yellow">🎟️ クーポン付与済</span>}
                         {r.couponApplied && <span className="badge badge-green">🎟️ クーポン使用</span>}
                         {r.couponInfo && !r.couponCode && !r.couponApplied && <span className="badge badge-yellow">🎟️ クーポン所持</span>}
@@ -253,6 +273,14 @@ export default function Admin() {
                       {r.status === 'confirmed' && (
                         <button className="btn btn-sm btn-secondary" onClick={() => updateStatus(r.id, 'pending')}>
                           戻す
+                        </button>
+                      )}
+                      {r.status === 'waitlisted' && (
+                        <button className="btn btn-sm btn-success" onClick={() => {
+                          if (confirm(`${r.parentName} さんをキャンセル待ちから繰り上げますか？`))
+                            updateStatus(r.id, 'pending')
+                        }}>
+                          繰り上げ
                         </button>
                       )}
                       {r.status !== 'cancelled' && (
@@ -337,7 +365,18 @@ export default function Admin() {
                             const unassigned = nurses.filter(n => !assigned.find(a => a.id === n.id))
                             return (
                               <tr key={slot} className={assigned.length > 0 ? 'slot-active' : 'slot-empty'}>
-                                <td className="slot-time">{slot}</td>
+                                <td className="slot-time">
+                                  {slot}
+                                  {assigned.length > 0 && (() => {
+                                    const cap = getSlotCapacity(date, slot)
+                                    return (
+                                      <span style={{ fontSize: '.75rem', color: cap.isFull ? '#DC2626' : 'var(--green700)', marginLeft: '4px', fontWeight: 600 }}>
+                                        {cap.current}/{cap.maxCapacity}
+                                        {cap.waitlistCount > 0 && <span style={{ color: '#7C3AED' }}> +待{cap.waitlistCount}</span>}
+                                      </span>
+                                    )
+                                  })()}
+                                </td>
                                 <td className="slot-nurses">
                                   <div className="slot-nurse-row">
                                     {assigned.map((n, i) => (

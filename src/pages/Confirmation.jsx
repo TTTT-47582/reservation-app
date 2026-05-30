@@ -20,14 +20,20 @@ export default function Confirmation() {
     return `${dt.getFullYear()}年${dt.getMonth() + 1}月${dt.getDate()}日（${days[dt.getDay()]}）`
   }
 
+  const isWaitlisted = r.status === 'waitlisted'
+
   return (
     <div className="confirm-page">
       <div className="confirm-card">
-        <div className="confirm-icon">✅</div>
-        <h1 className="confirm-title">予約を受け付けました</h1>
+        <div className="confirm-icon">{isWaitlisted ? '⏳' : '✅'}</div>
+        <h1 className="confirm-title">
+          {isWaitlisted ? 'キャンセル待ちに登録しました' : '予約を受け付けました'}
+        </h1>
         <p className="confirm-subtitle">
-          内容を確認後、担当者よりお電話またはLINEにてご連絡いたします。<br />
-          確認が取れた時点で予約確定となります。
+          {isWaitlisted
+            ? <>空きが出た場合、登録順にご連絡いたします。<br />ご連絡後に予約が確定となります。</>
+            : <>内容を確認後、担当者よりお電話またはLINEにてご連絡いたします。<br />確認が取れた時点で予約確定となります。</>
+          }
         </p>
 
         {/* クーポン付与 */}
