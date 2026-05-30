@@ -186,8 +186,21 @@ export function AppProvider({ children }) {
   }
 
   // ===== 予約 =====
+  const sanitize = (v, maxLen = 100) =>
+    typeof v === 'string' ? v.trim().slice(0, maxLen) : v
+
   const addReservation = async (formData) => {
-    const phone = formData.phone
+    const sanitized = {
+      ...formData,
+      parentName: sanitize(formData.parentName, 50),
+      childName: sanitize(formData.childName, 50),
+      childKana: sanitize(formData.childKana, 50),
+      phone: sanitize(formData.phone, 20),
+      purpose: sanitize(formData.purpose, 200),
+      notes: sanitize(formData.notes, 500),
+      couponCode: sanitize(formData.couponCode, 30),
+    }
+    const phone = sanitized.phone
 
     // 同一電話番号の有効予約が3件以上なら拒否
     const active = reservations.filter(r => r.phone === phone && r.status !== 'cancelled')
@@ -196,8 +209,8 @@ export function AppProvider({ children }) {
     // 同一電話番号・同一日付・同一時間帯の重複を拒否
     const duplicate = reservations.some(r =>
       r.phone === phone &&
-      r.date === formData.date &&
-      r.timeSlot === formData.timeSlot &&
+      r.date === sanitized.date &&
+      r.timeSlot === sanitized.timeSlot &&
       r.status !== 'cancelled'
     )
     if (duplicate) return { error: 'duplicate' }
@@ -221,16 +234,16 @@ export function AppProvider({ children }) {
 
     // 入力されたクーポンコードを検証し、即座に使用済みにする
     let couponApplied = false
-    if (formData.couponCode && couponSnap.exists()) {
+    if (sanitized.couponCode && couponSnap.exists()) {
       const c = couponSnap.data()
-      if (c.code === formData.couponCode && !c.used) {
+      if (c.code === sanitized.couponCode && !c.used) {
         couponApplied = true
         await updateDoc(couponRef, { used: true, usedAt: serverTimestamp() })
       }
     }
 
     const reservation = {
-      ...formData,
+      ...sanitized,
       createdAt: serverTimestamp(),
       status: 'pending',
       visitCount: newCount,

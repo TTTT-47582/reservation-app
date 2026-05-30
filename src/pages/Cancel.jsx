@@ -27,18 +27,26 @@ export default function Cancel() {
   const [changeForm, setChangeForm] = useState({ date: '', timeSlot: '' })
   const [changeError, setChangeError] = useState('')
   const [changedId, setChangedId] = useState(null)
+  // 2段階確認
+  const [nameInput, setNameInput] = useState('')
+  const [nameVerified, setNameVerified] = useState(false)
+  const [nameError, setNameError] = useState('')
 
   const reservationId = searchParams.get('id')
   const directReservation = reservationId
     ? reservations.find(r => r.id === reservationId)
     : null
 
-  const foundReservations = searched
+  // 電話番号一致の予約（未キャンセル）
+  const matchedReservations = searched
     ? reservations.filter(r =>
         (r.phone === phone.replace(/-/g, '') || r.phone === phone) &&
         r.status !== 'cancelled'
       )
     : []
+
+  // 名前確認後のみ表示
+  const foundReservations = nameVerified ? matchedReservations : []
 
   const availableDates = getAvailableDates()
   const changeSlots = changeForm.date ? getAvailableSlots(changeForm.date) : []
@@ -46,8 +54,31 @@ export default function Cancel() {
   const handleSearch = (e) => {
     e.preventDefault()
     setSearched(true)
+    setNameVerified(false)
+    setNameInput('')
+    setNameError('')
     setCancelledId(null)
     setChangedId(null)
+  }
+
+  const handleVerifyName = (e) => {
+    e.preventDefault()
+    const input = nameInput.trim().replace(/\s/g, '')
+    if (input.length < 2) {
+      setNameError('2文字以上入力してください')
+      return
+    }
+    const matched = matchedReservations.some(r =>
+      r.childKana?.replace(/\s/g, '').startsWith(input) ||
+      r.childName?.replace(/\s/g, '').startsWith(input)
+    )
+    if (matched) {
+      setNameVerified(true)
+      setNameError('')
+    } else {
+      setNameError('お名前が一致しませんでした。カタカナで入力してください')
+      setNameInput('')
+    }
   }
 
   const handleCancel = async (r) => {
@@ -208,10 +239,34 @@ export default function Cancel() {
                 </div>
               </form>
 
-              {searched && foundReservations.length === 0 && (
+              {searched && matchedReservations.length === 0 && (
                 <p style={{ marginTop: '16px', color: 'var(--g500)', fontSize: '.875rem' }}>
                   この電話番号の予約が見つかりませんでした
                 </p>
+              )}
+
+              {searched && matchedReservations.length > 0 && !nameVerified && (
+                <div style={{ marginTop: '16px', background: 'var(--green50)', border: '1px solid var(--green200)', borderRadius: 'var(--r-md)', padding: '16px' }}>
+                  <p style={{ fontWeight: 700, color: 'var(--green800)', marginBottom: '8px' }}>🔒 本人確認</p>
+                  <p style={{ fontSize: '.875rem', color: 'var(--g600)', marginBottom: '12px' }}>
+                    {matchedReservations.length}件の予約が見つかりました。<br />
+                    お子様のお名前（カタカナ）の最初の2文字以上を入力してください
+                  </p>
+                  <form onSubmit={handleVerifyName}>
+                    <div style={{ display: 'flex', gap: '10px' }}>
+                      <input
+                        className="form-input"
+                        placeholder="例：ヤマダ"
+                        value={nameInput}
+                        onChange={e => { setNameInput(e.target.value); setNameError('') }}
+                      />
+                      <button className="btn btn-primary" type="submit">確認</button>
+                    </div>
+                    {nameError && (
+                      <p style={{ color: '#DC2626', fontSize: '.8125rem', marginTop: '6px' }}>{nameError}</p>
+                    )}
+                  </form>
+                </div>
               )}
 
               {foundReservations.map(r => (

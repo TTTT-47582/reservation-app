@@ -2,9 +2,25 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // 予約：作成は誰でも可、読み取り・更新・削除は管理者のみ
+    // 予約：作成は誰でも可（フィールド検証あり）、読み取り・更新・削除は管理者のみ
     match /reservations/{id} {
-      allow create: if true;
+      allow create: if
+        request.resource.data.parentName is string &&
+        request.resource.data.parentName.size() > 0 &&
+        request.resource.data.parentName.size() <= 50 &&
+        request.resource.data.childName is string &&
+        request.resource.data.childName.size() > 0 &&
+        request.resource.data.childName.size() <= 50 &&
+        request.resource.data.phone is string &&
+        request.resource.data.phone.size() >= 10 &&
+        request.resource.data.phone.size() <= 20 &&
+        request.resource.data.date is string &&
+        request.resource.data.date.size() == 10 &&
+        request.resource.data.timeSlot is string &&
+        request.resource.data.timeSlot.size() > 0 &&
+        request.resource.data.timeSlot.size() <= 20 &&
+        (!('notes' in request.resource.data) || request.resource.data.notes.size() <= 500) &&
+        (!('purpose' in request.resource.data) || request.resource.data.purpose.size() <= 200);
       allow read, update, delete: if request.auth != null;
     }
 
@@ -25,6 +41,7 @@ service cloud.firestore {
       allow read, create, update: if true;
       allow delete: if request.auth != null;
     }
+
     // クーポン：読み取り・作成・更新は誰でも可（フォームでの検証に必要）、削除は管理者のみ
     match /coupons/{id} {
       allow read, create, update: if true;
