@@ -3,7 +3,12 @@ import {
   collection, doc, addDoc, updateDoc, deleteDoc, setDoc, getDoc,
   onSnapshot, serverTimestamp, query, orderBy,
 } from 'firebase/firestore'
-import { db } from '../firebase'
+import {
+  createUserWithEmailAndPassword, signInWithEmailAndPassword,
+  signOut, onAuthStateChanged, updatePassword, EmailAuthProvider,
+  reauthenticateWithCredential,
+} from 'firebase/auth'
+import { db, auth } from '../firebase'
 
 const AppContext = createContext(null)
 
@@ -42,6 +47,24 @@ export function AppProvider({ children }) {
   const [photoAlbums, setPhotoAlbums] = useState([])
   const [lastReservation, setLastReservation] = useState(null)
   const [loading, setLoading] = useState(true)
+  // ユーザー認証
+  const [authUser, setAuthUser] = useState(null)
+  const [userProfile, setUserProfile] = useState(null)
+  const [authLoading, setAuthLoading] = useState(true)
+
+  useEffect(() => {
+    const unsubAuth = onAuthStateChanged(auth, async (user) => {
+      setAuthUser(user)
+      if (user) {
+        const snap = await getDoc(doc(db, 'userProfiles', user.uid))
+        setUserProfile(snap.exists() ? snap.data() : null)
+      } else {
+        setUserProfile(null)
+      }
+      setAuthLoading(false)
+    })
+    return () => unsubAuth()
+  }, [])
 
   useEffect(() => {
     const unsubs = [
@@ -80,6 +103,44 @@ export function AppProvider({ children }) {
     ]
     return () => unsubs.forEach(u => u())
   }, [])
+
+  // ===== ユーザー認証 =====
+  const registerUser = async (email, password, profile) => {
+    const cred = await createUserWithEmailAndPassword(auth, email, password)
+    const profileData = { ...profile, email, createdAt: new Date().toISOString() }
+    await setDoc(doc(db, 'userProfiles', cred.user.uid), profileData)
+    setUserProfile(profileData)
+    return cred.user
+  }
+
+  const loginUser = async (email, password) => {
+    const cred = await signInWithEmailAndPassword(auth, email, password)
+    const snap = await getDoc(doc(db, 'userProfiles', cred.user.uid))
+    if (snap.exists()) setUserProfile(snap.data())
+    return cred.user
+  }
+
+  const logoutUser = () => {
+    setUserProfile(null)
+    return signOut(auth)
+  }
+
+  const updateUserProfile = async (profile) => {
+    if (!authUser) return
+    const updated = { ...profile, updatedAt: new Date().toISOString() }
+    await updateDoc(doc(db, 'userProfiles', authUser.uid), updated)
+    setUserProfile(prev => ({ ...prev, ...updated }))
+  }
+
+  const changeUserPassword = async (currentPassword, newPassword) => {
+    if (!authUser) return
+    const cred = EmailAuthProvider.credential(authUser.email, currentPassword)
+    await reauthenticateWithCredential(authUser, cred)
+    await updatePassword(authUser, newPassword)
+  }
+
+  // 管理者かどうか（環境変数で指定したメールアドレスと一致するか）
+  const isAdmin = authUser?.email === import.meta.env.VITE_ADMIN_EMAIL
 
   // ===== 保育士 =====
   const addNurse = async (name) => {
@@ -445,6 +506,8 @@ export function AppProvider({ children }) {
       closedDates, addClosedDate, removeClosedDate,
       photoAlbums, createPhotoAlbum, addPhotoUrl, removePhotoUrl, deletePhotoAlbum,
       lastReservation, loading,
+      authUser, userProfile, authLoading, isAdmin,
+      registerUser, loginUser, logoutUser, updateUserProfile, changeUserPassword,
     }}>
       {children}
     </AppContext.Provider>

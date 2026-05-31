@@ -63,6 +63,12 @@ img { max-width: 100%; }
   cursor: pointer; transition: all .15s;
 }
 .header-nav .nav-btn-primary:hover { background: var(--green700); }
+.header-nav .nav-btn-secondary {
+  background: transparent; color: var(--green700); padding: 7px 14px;
+  border-radius: var(--r-full); font-size: 0.875rem; font-weight: 600;
+  cursor: pointer; transition: all .15s; border: 1.5px solid var(--green600);
+}
+.header-nav .nav-btn-secondary:hover { background: var(--green50); }
 
 /* ========== BUTTONS ========== */
 .btn {

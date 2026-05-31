@@ -30,14 +30,13 @@ export default function ReservationForm() {
   const {
     termsAgreed, addReservation, addToWaitlist,
     getAvailableDates, getAvailableStartTimes, getConsecutiveEndTimes, getSlotCapacity,
-    visitCounts, coupons, shifts,
+    visitCounts, coupons, shifts, userProfile,
   } = useApp()
 
   const [form, setForm] = useState(() => {
     try {
       const saved = sessionStorage.getItem('reservationForm')
-      if (!saved) return EMPTY_FORM
-      const parsed = JSON.parse(saved)
+      const parsed = saved ? JSON.parse(saved) : {}
       // 旧形式 (timeSlot) を startTime/endTime に変換
       if (parsed.timeSlot && !parsed.startTime) {
         const [s, e] = parsed.timeSlot.split('〜')
@@ -51,10 +50,29 @@ export default function ReservationForm() {
   const [errors, setErrors] = useState({})
   const [submitting, setSubmitting] = useState(false)
   const [joinWaitlist, setJoinWaitlist] = useState(false)
+  const [profileApplied, setProfileApplied] = useState(false)
 
   useEffect(() => {
     if (!termsAgreed) navigate('/terms')
   }, [termsAgreed, navigate])
+
+  // ログイン済みかつプロフィールがある場合、未入力フィールドを自動入力
+  useEffect(() => {
+    if (!userProfile || profileApplied) return
+    setForm(prev => ({
+      ...prev,
+      parentName: prev.parentName || userProfile.parentName || '',
+      parentKana: prev.parentKana || userProfile.parentKana || '',
+      phone: prev.phone || userProfile.phone || '',
+      lineName: prev.lineName || userProfile.lineName || '',
+      childName: prev.childName || userProfile.childName || '',
+      childKana: prev.childKana || userProfile.childKana || '',
+      childBirthdate: prev.childBirthdate || userProfile.childBirthdate || '',
+      relationship: prev.relationship || userProfile.relationship || '',
+      email: prev.email || userProfile.email || '',
+    }))
+    setProfileApplied(true)
+  }, [userProfile, profileApplied])
 
   const availableDates = getAvailableDates()
   const shiftsConfigured = Object.keys(shifts).length > 0
@@ -191,6 +209,11 @@ export default function ReservationForm() {
       </div>
 
       <div className="form-wrap">
+        {userProfile && (
+          <div style={{ background: 'var(--green50)', border: '1px solid var(--green200)', borderRadius: 'var(--r-md)', padding: '12px 16px', marginBottom: '16px', fontSize: '.875rem', color: 'var(--green800)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span>登録情報を自動入力しました（{userProfile.parentName} 様）</span>
+          </div>
+        )}
         {willGetCoupon && (
           <div className="coupon-hint">
             🎉 今回のご予約で5回目の利用となります！送信後に割引クーポンをプレゼントします。
